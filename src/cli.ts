@@ -127,7 +127,7 @@ export function createCli() {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
         const cwd = opts.cwd;
         const repo = opts.repo ?? detectRepo(cwd);
-        const branch = `devloop/issue-${opts.issue}`;
+        const branch = `aidev/issue-${opts.issue}`;
 
         ctx = {
           runId,
