@@ -24,6 +24,11 @@ IMPORTANT: First, explore the codebase to understand the structure. Then output 
 Required JSON schema:
 {"summary":"string","steps":["string"],"filesToTouch":["string"],"tests":["string"],"risks":["string"],"acceptanceCriteria":["string"],"investigation":"string - detailed findings from your codebase analysis (what you found, root cause, relevant code paths)"}
 
+Format rules for the "investigation" field:
+- Use Markdown bullet list (\`-\` items) to structure your findings
+- Wrap file paths, function names, and code snippets in backticks for inline code
+- Separate logical sections (e.g. root cause, relevant code, affected areas) with blank lines and bold headers (\`**Header**\`)
+
 Your final message must contain ONLY the JSON object, nothing else.`;
 
   logger.info("Running planner agent", { issue: input.issue.number });
