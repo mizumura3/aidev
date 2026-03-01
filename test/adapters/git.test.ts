@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createGitAdapter, type GitAdapter } from "../../src/adapters/git.js";
 
+const mockExeca = vi.fn();
 vi.mock("execa", () => ({
-  execa: vi.fn(),
+  execa: mockExeca,
 }));
-
-import { execa } from "execa";
-const mockExeca = vi.mocked(execa);
 
 describe("GitAdapter", () => {
   let git: GitAdapter;
@@ -19,13 +17,30 @@ describe("GitAdapter", () => {
   });
 
   describe("createBranch", () => {
-    it("runs git checkout -b with branch name", async () => {
+    it("creates new branch when it does not exist", async () => {
       await git.createBranch("feature/x", cwd);
       expect(mockExeca).toHaveBeenCalledWith(
         "git",
         ["checkout", "-b", "feature/x"],
         { cwd }
       );
+    });
+
+    it("deletes existing branch then creates fresh one", async () => {
+      const error = new Error("branch already exists");
+      (error as any).exitCode = 128;
+      mockExeca
+        .mockRejectedValueOnce(error)       // checkout -b fails
+        .mockResolvedValueOnce({ stdout: "" } as any)  // checkout main
+        .mockResolvedValueOnce({ stdout: "" } as any)  // branch -D
+        .mockResolvedValueOnce({ stdout: "" } as any); // checkout -b retry
+
+      await git.createBranch("feature/x", cwd);
+
+      expect(mockExeca).toHaveBeenNthCalledWith(1, "git", ["checkout", "-b", "feature/x"], { cwd });
+      expect(mockExeca).toHaveBeenNthCalledWith(2, "git", ["checkout", "main"], { cwd });
+      expect(mockExeca).toHaveBeenNthCalledWith(3, "git", ["branch", "-D", "feature/x"], { cwd });
+      expect(mockExeca).toHaveBeenNthCalledWith(4, "git", ["checkout", "-b", "feature/x"], { cwd });
     });
   });
 

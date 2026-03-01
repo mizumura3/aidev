@@ -5,6 +5,7 @@ export type StateHandlerMap = Partial<Record<RunState, StateHandler>>;
 export interface Persistence {
   save(ctx: RunContext): Promise<void>;
   load(runId: string): Promise<RunContext | null>;
+  findLatestByIssue?(issueNumber: number): Promise<RunContext | null>;
 }
 
 export interface WorkflowOptions {

@@ -160,6 +160,20 @@ describe("runWorkflow", () => {
     );
   });
 
+  it("resumes from a non-init state", async () => {
+    const handlers: StateHandlerMap = {
+      creating_pr: makeHandler("watching_ci"),
+      watching_ci: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({ state: "creating_pr" });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+
+    expect(result.state).toBe("done");
+    expect(handlers.creating_pr).toHaveBeenCalledOnce();
+  });
+
   it("emits events via onTransition callback", async () => {
     const handlers: StateHandlerMap = {
       init: makeHandler("planning"),

@@ -23,6 +23,7 @@ export const PlanSchema = z.object({
   tests: z.array(z.string()),
   risks: z.array(z.string()),
   acceptanceCriteria: z.array(z.string()),
+  investigation: z.string().optional(),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 

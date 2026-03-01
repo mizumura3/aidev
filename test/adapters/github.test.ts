@@ -4,12 +4,10 @@ import {
   type GitHubAdapter,
 } from "../../src/adapters/github.js";
 
+const mockExeca = vi.fn();
 vi.mock("execa", () => ({
-  execa: vi.fn(),
+  execa: mockExeca,
 }));
-
-import { execa } from "execa";
-const mockExeca = vi.mocked(execa);
 
 describe("GitHubAdapter", () => {
   let gh: GitHubAdapter;
@@ -148,6 +146,22 @@ describe("GitHubAdapter", () => {
         "1",
         "--repo",
         repo,
+      ]);
+    });
+  });
+
+  describe("commentOnIssue", () => {
+    it("posts comment on issue via gh", async () => {
+      mockExeca.mockResolvedValue({ stdout: "" } as any);
+      await gh.commentOnIssue(4, "## Investigation\nFound the bug.");
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "issue",
+        "comment",
+        "4",
+        "--repo",
+        repo,
+        "--body",
+        "## Investigation\nFound the bug.",
       ]);
     });
   });

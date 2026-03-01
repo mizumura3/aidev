@@ -18,6 +18,7 @@ export type CiStatus = "passing" | "failing" | "pending";
 
 export interface GitHubAdapter {
   getIssue(number: number): Promise<Issue>;
+  commentOnIssue(number: number, body: string): Promise<void>;
   createPr(opts: CreatePrOpts): Promise<number>;
   getCiStatus(branch: string): Promise<CiStatus>;
   mergePr(number: number): Promise<void>;
@@ -44,6 +45,18 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         body: raw.body,
         labels: raw.labels.map((l: { name: string }) => l.name),
       };
+    },
+
+    async commentOnIssue(number, body) {
+      await execa("gh", [
+        "issue",
+        "comment",
+        String(number),
+        "--repo",
+        repo,
+        "--body",
+        body,
+      ]);
     },
 
     async createPr(opts) {

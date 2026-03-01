@@ -40,6 +40,13 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const issue = await github.getIssue(ctx.issueNumber);
     const plan = await runPlanner({ issue, cwd: ctx.cwd }, logger);
     logger.info("Plan created", { summary: plan.summary });
+
+    if (plan.investigation) {
+      const comment = `## 🔍 Investigation\n\n${plan.investigation}\n\n## Plan\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+      await github.commentOnIssue(ctx.issueNumber, comment);
+      logger.info("Posted investigation to issue", { issue: ctx.issueNumber });
+    }
+
     return transition(ctx, "implementing", { plan });
   };
 
@@ -87,7 +94,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (!ctx.result) throw new Error("No result available");
     await git.push(ctx.branch, ctx.cwd);
     const prNumber = await github.createPr({
-      title: ctx.result.commitMessageDraft,
+      title: ctx.result.commitMessageDraft.split("\n")[0]!,
       body: ctx.result.prBodyDraft,
       head: ctx.branch,
       base: "main",

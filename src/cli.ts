@@ -48,6 +48,27 @@ function createFilePersistence(baseDir: string): Persistence {
         return null;
       }
     },
+    async findLatestByIssue(issueNumber) {
+      const { readdir } = await import("node:fs/promises");
+      let dirs: string[];
+      try {
+        dirs = await readdir(baseDir);
+      } catch {
+        return null;
+      }
+      // Sort descending by timestamp (embedded in dir name)
+      dirs.sort().reverse();
+      for (const dir of dirs) {
+        try {
+          const data = await readFile(join(baseDir, dir, "state.json"), "utf-8");
+          const ctx = JSON.parse(data) as RunContext;
+          if (ctx.issueNumber === issueNumber) return ctx;
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    },
   };
 }
 
@@ -71,30 +92,10 @@ export function createCli() {
     .option("--no-merge", "Skip merge after CI passes")
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
     .option("--claude-path <path>", "Path to native Claude Code executable")
+    .option("--resume", "Resume the latest run for this issue")
     .action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
-      const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
-      const cwd = opts.cwd;
-      const repo = opts.repo ?? detectRepo(cwd);
-      const branch = `devloop/issue-${opts.issue}`;
-
-      const ctx: RunContext = {
-        runId,
-        issueNumber: opts.issue,
-        repo,
-        cwd,
-        state: "init",
-        branch,
-        maxFixAttempts: opts.maxFixAttempts,
-        fixAttempts: 0,
-        dryRun: opts.dryRun,
-        noMerge: !opts.merge,
-      };
-
-      const git = createGitAdapter();
-      const github = createGitHubAdapter(repo);
-      const handlers = createStateHandlers({ git, github, logger });
       const baseDir = join(
         process.env.HOME ?? "~",
         ".devloop",
@@ -102,7 +103,51 @@ export function createCli() {
       );
       const persistence = createFilePersistence(baseDir);
 
-      logger.info("Starting devloop", { runId, issue: opts.issue, repo });
+      let ctx: RunContext;
+
+      if (opts.resume) {
+        const saved = await persistence.findLatestByIssue!(opts.issue);
+        if (!saved) {
+          logger.error("No previous run found for issue", { issue: opts.issue });
+          process.exit(1);
+        }
+        // Override flags for resumed run
+        ctx = {
+          ...saved,
+          dryRun: opts.dryRun,
+          noMerge: !opts.merge,
+        };
+        // If previous run completed as done (dry-run), restart from creating_pr
+        // (commit already exists, just need push + PR)
+        if (saved.state === "done" && saved.dryRun) {
+          ctx.state = "creating_pr";
+        }
+        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, issue: opts.issue });
+      } else {
+        const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
+        const cwd = opts.cwd;
+        const repo = opts.repo ?? detectRepo(cwd);
+        const branch = `devloop/issue-${opts.issue}`;
+
+        ctx = {
+          runId,
+          issueNumber: opts.issue,
+          repo,
+          cwd,
+          state: "init",
+          branch,
+          maxFixAttempts: opts.maxFixAttempts,
+          fixAttempts: 0,
+          dryRun: opts.dryRun,
+          noMerge: !opts.merge,
+        };
+      }
+
+      const git = createGitAdapter();
+      const github = createGitHubAdapter(ctx.repo);
+      const handlers = createStateHandlers({ git, github, logger });
+
+      logger.info("Starting devloop", { runId: ctx.runId, issue: opts.issue, repo: ctx.repo });
 
       const result = await runWorkflow(ctx, handlers, persistence, {
         onTransition: (from, to) =>
@@ -110,9 +155,9 @@ export function createCli() {
       });
 
       if (result.state === "done") {
-        logger.info("Devloop completed successfully", { runId });
+        logger.info("Devloop completed successfully", { runId: ctx.runId });
       } else {
-        logger.error("Devloop failed", { runId, state: result.state });
+        logger.error("Devloop failed", { runId: ctx.runId, state: result.state });
         process.exit(1);
       }
     });

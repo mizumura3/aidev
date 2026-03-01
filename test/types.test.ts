@@ -62,6 +62,20 @@ describe("PlanSchema", () => {
   it("rejects plan with empty steps", () => {
     expect(() => PlanSchema.parse({ ...validPlan, steps: [] })).toThrow();
   });
+
+  it("accepts plan with optional investigation field", () => {
+    const planWithInvestigation = {
+      ...validPlan,
+      investigation: "Found that the dashboard uses Riverpod AsyncValue but initial state is AsyncData([]) instead of AsyncLoading.",
+    };
+    const parsed = PlanSchema.parse(planWithInvestigation);
+    expect(parsed.investigation).toContain("AsyncValue");
+  });
+
+  it("accepts plan without investigation field", () => {
+    const parsed = PlanSchema.parse(validPlan);
+    expect(parsed.investigation).toBeUndefined();
+  });
 });
 
 describe("ResultSchema", () => {

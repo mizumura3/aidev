@@ -22,7 +22,7 @@ ${input.issue.body}
 IMPORTANT: First, explore the codebase to understand the structure. Then output ONLY a JSON object (no prose, no markdown fences, no explanation before or after).
 
 Required JSON schema:
-{"summary":"string","steps":["string"],"filesToTouch":["string"],"tests":["string"],"risks":["string"],"acceptanceCriteria":["string"]}
+{"summary":"string","steps":["string"],"filesToTouch":["string"],"tests":["string"],"risks":["string"],"acceptanceCriteria":["string"],"investigation":"string - detailed findings from your codebase analysis (what you found, root cause, relevant code paths)"}
 
 Your final message must contain ONLY the JSON object, nothing else.`;
 
