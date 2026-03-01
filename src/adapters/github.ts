@@ -16,6 +16,12 @@ export interface CreatePrOpts {
 
 export type CiStatus = "passing" | "failing" | "pending";
 
+export interface CreateIssueOpts {
+  title: string;
+  body: string;
+  labels: string[];
+}
+
 export interface GitHubAdapter {
   getIssue(number: number): Promise<Issue>;
   commentOnIssue(number: number, body: string): Promise<void>;
@@ -25,6 +31,8 @@ export interface GitHubAdapter {
   closeIssue(number: number): Promise<void>;
   listIssuesByLabel(label: string): Promise<Issue[]>;
   getCheckRunLogs(branch: string): Promise<string>;
+  createIssue(opts: CreateIssueOpts): Promise<number>;
+  searchIssues(query: string): Promise<Issue[]>;
 }
 
 export function createGitHubAdapter(repo: string): GitHubAdapter {
@@ -162,6 +170,53 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         label,
         "--json",
         "number,title,body,labels",
+      ]);
+      const raw: Array<{
+        number: number;
+        title: string;
+        body: string;
+        labels: Array<{ name: string }>;
+      }> = JSON.parse(stdout);
+      return raw.map((r) => ({
+        number: r.number,
+        title: r.title,
+        body: r.body,
+        labels: r.labels.map((l) => l.name),
+      }));
+    },
+
+    async createIssue(opts) {
+      const args = [
+        "issue",
+        "create",
+        "--repo",
+        repo,
+        "--title",
+        opts.title,
+        "--body",
+        opts.body,
+      ];
+      for (const label of opts.labels) {
+        args.push("--label", label);
+      }
+      const { stdout } = await execa("gh", args);
+      const match = stdout.trim().match(/\/issues\/(\d+)$/);
+      if (!match) throw new Error(`unexpected gh issue create output: ${stdout}`);
+      return Number(match[1]);
+    },
+
+    async searchIssues(query) {
+      const { stdout } = await execa("gh", [
+        "search",
+        "issues",
+        "--repo",
+        repo,
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,labels",
+        "--",
+        query,
       ]);
       const raw: Array<{
         number: number;
