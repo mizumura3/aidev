@@ -4,7 +4,9 @@ import {
   type GitHubAdapter,
 } from "../../src/adapters/github.js";
 
-const mockExeca = vi.fn();
+const { mockExeca } = vi.hoisted(() => ({
+  mockExeca: vi.fn(),
+}));
 vi.mock("execa", () => ({
   execa: mockExeca,
 }));
@@ -113,10 +115,10 @@ describe("GitHubAdapter", () => {
       expect(status).toBe("pending");
     });
 
-    it("returns passing when no checks exist (no CI configured)", async () => {
+    it("returns no_checks when no checks exist", async () => {
       mockExeca.mockResolvedValue({ stdout: "[]" } as any);
       const status = await gh.getCiStatus("feature/x");
-      expect(status).toBe("passing");
+      expect(status).toBe("no_checks");
     });
   });
 

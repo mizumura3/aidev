@@ -14,7 +14,7 @@ export interface CreatePrOpts {
   base: string;
 }
 
-export type CiStatus = "passing" | "failing" | "pending";
+export type CiStatus = "passing" | "failing" | "pending" | "no_checks";
 
 export interface GitHubAdapter {
   getIssue(number: number): Promise<Issue>;
@@ -90,7 +90,7 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
       const checks: Array<{ status: string; conclusion: string | null }> =
         JSON.parse(stdout);
 
-      if (checks.length === 0) return "passing";
+      if (checks.length === 0) return "no_checks";
       if (checks.some((c) => c.conclusion === "failure")) return "failing";
       if (checks.some((c) => c.status !== "completed")) return "pending";
       return "passing";
