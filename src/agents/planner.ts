@@ -1,6 +1,6 @@
 import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { PlanSchema, type Plan } from "../types.js";
-import { createSafetyHook } from "./shared.js";
+import { createSafetyHook, extractJson, getBaseSdkOptions } from "./shared.js";
 import type { Issue } from "../adapters/github.js";
 import type { Logger } from "../util/logger.js";
 
@@ -13,31 +13,27 @@ export async function runPlanner(
   input: PlannerInput,
   logger: Logger
 ): Promise<Plan> {
-  const prompt = `You are a planning agent. Analyze the following GitHub issue and create an implementation plan.
+  const prompt = `Analyze the codebase and the following GitHub issue. Then output your implementation plan as a single JSON object.
 
 Issue #${input.issue.number}: ${input.issue.title}
 
 ${input.issue.body}
 
-Respond ONLY with a JSON object matching this schema:
-{
-  "summary": "string - brief summary of what needs to be done",
-  "steps": ["string[] - ordered implementation steps (at least 1)"],
-  "filesToTouch": ["string[] - files that will be created or modified"],
-  "tests": ["string[] - test files to create or modify"],
-  "risks": ["string[] - potential risks or concerns"],
-  "acceptanceCriteria": ["string[] - criteria for completion"]
-}
+IMPORTANT: First, explore the codebase to understand the structure. Then output ONLY a JSON object (no prose, no markdown fences, no explanation before or after).
 
-Output ONLY valid JSON, no markdown fences, no explanation.`;
+Required JSON schema:
+{"summary":"string","steps":["string"],"filesToTouch":["string"],"tests":["string"],"risks":["string"],"acceptanceCriteria":["string"]}
+
+Your final message must contain ONLY the JSON object, nothing else.`;
 
   logger.info("Running planner agent", { issue: input.issue.number });
 
   const response = query({
     prompt,
     options: {
+      ...getBaseSdkOptions(),
       cwd: input.cwd,
-      permissionMode: "plan",
+      permissionMode: "bypassPermissions",
       allowedTools: ["Read", "Glob", "Grep", "Bash"],
       hooks: { PreToolUse: [createSafetyHook()] },
       maxTurns: 20,
@@ -51,6 +47,8 @@ Output ONLY valid JSON, no markdown fences, no explanation.`;
     }
   }
 
-  const parsed = JSON.parse(resultText);
+  logger.info("Planner response", { length: resultText.length });
+
+  const parsed = extractJson(resultText, "Planner");
   return PlanSchema.parse(parsed);
 }

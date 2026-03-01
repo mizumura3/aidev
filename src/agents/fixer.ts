@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-code";
 import { FixSchema, type Fix, type Plan } from "../types.js";
-import { createSafetyHook } from "./shared.js";
+import { createSafetyHook, extractJson, getBaseSdkOptions } from "./shared.js";
 import type { Logger } from "../util/logger.js";
 
 export interface FixerInput {
@@ -42,6 +42,7 @@ Output ONLY valid JSON, no markdown fences.`;
   const response = query({
     prompt,
     options: {
+      ...getBaseSdkOptions(),
       cwd: input.cwd,
       permissionMode: "bypassPermissions",
       hooks: { PreToolUse: [createSafetyHook()] },
@@ -56,6 +57,6 @@ Output ONLY valid JSON, no markdown fences.`;
     }
   }
 
-  const parsed = JSON.parse(resultText);
+  const parsed = extractJson(resultText, "Fixer");
   return FixSchema.parse(parsed);
 }

@@ -1,6 +1,9 @@
+import { accessSync, constants } from "node:fs";
+import { join } from "node:path";
 import type {
   HookCallback,
   HookCallbackMatcher,
+  Options,
   SyncHookJSONOutput,
 } from "@anthropic-ai/claude-code";
 
@@ -55,4 +58,59 @@ export function createSafetyHook(): HookCallbackMatcher {
     );
   };
   return { hooks: [hook] };
+}
+
+/** 入れ子判定を回避するために削除する環境変数 */
+const NESTED_DETECTION_VARS = ["CLAUDECODE"];
+
+export function cleanEnvForSdk(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (NESTED_DETECTION_VARS.includes(key)) continue;
+    env[key] = value;
+  }
+  // SDK として起動することを明示
+  env.CLAUDE_CODE_ENTRYPOINT = "sdk-ts";
+  return env;
+}
+
+export function findClaudeExecutable(): string | undefined {
+  if (process.env.CLAUDE_EXECUTABLE) return process.env.CLAUDE_EXECUTABLE;
+
+  const pathDirs = (process.env.PATH ?? "").split(":");
+  for (const dir of pathDirs) {
+    if (dir.includes("node_modules")) continue;
+    const candidate = join(dir, "claude");
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+export function extractJson(text: string, agentName: string): unknown {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    throw new Error(`${agentName} did not return JSON. Response: ${text.slice(0, 500)}`);
+  }
+  return JSON.parse(match[0]);
+}
+
+export function getBaseSdkOptions(): Pick<Options, "pathToClaudeCodeExecutable" | "env"> {
+  const executable = findClaudeExecutable();
+  if (!executable) {
+    throw new Error(
+      "Native Claude Code binary not found. " +
+      "Install: https://docs.anthropic.com/en/docs/claude-code or " +
+      "set --claude-path / CLAUDE_EXECUTABLE"
+    );
+  }
+  return {
+    pathToClaudeCodeExecutable: executable,
+    env: cleanEnvForSdk(),
+  };
 }

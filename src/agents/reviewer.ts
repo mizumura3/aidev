@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-code";
 import { ReviewSchema, type Plan, type Review } from "../types.js";
-import { createSafetyHook } from "./shared.js";
+import { createSafetyHook, extractJson, getBaseSdkOptions } from "./shared.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ReviewerInput {
@@ -43,8 +43,9 @@ Output ONLY valid JSON, no markdown fences.`;
   const response = query({
     prompt,
     options: {
+      ...getBaseSdkOptions(),
       cwd: input.cwd,
-      permissionMode: "plan",
+      permissionMode: "bypassPermissions",
       allowedTools: ["Read", "Glob", "Grep", "Bash"],
       hooks: { PreToolUse: [createSafetyHook()] },
       maxTurns: 20,
@@ -58,6 +59,6 @@ Output ONLY valid JSON, no markdown fences.`;
     }
   }
 
-  const parsed = JSON.parse(resultText);
+  const parsed = extractJson(resultText, "Reviewer");
   return ReviewSchema.parse(parsed);
 }

@@ -61,8 +61,9 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         "--base",
         opts.base,
       ]);
-      const raw = JSON.parse(stdout);
-      return raw.number;
+      const match = stdout.trim().match(/\/pull\/(\d+)$/);
+      if (!match) throw new Error(`unexpected gh pr create output: ${stdout}`);
+      return Number(match[1]);
     },
 
     async getCiStatus(branch) {
@@ -70,15 +71,14 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         "api",
         `repos/${repo}/commits/${branch}/check-runs`,
         "--jq",
-        ".check_runs | map({state: .status, conclusion: .conclusion})",
+        ".check_runs | map({status: .status, conclusion: .conclusion})",
       ]);
-      const checks: Array<{ state: string; conclusion: string }> =
+      const checks: Array<{ status: string; conclusion: string | null }> =
         JSON.parse(stdout);
 
-      if (checks.length === 0) return "passing";
+      if (checks.length === 0) return "pending";
       if (checks.some((c) => c.conclusion === "failure")) return "failing";
-      if (checks.some((c) => c.state === "PENDING" || c.conclusion === ""))
-        return "pending";
+      if (checks.some((c) => c.status !== "completed")) return "pending";
       return "passing";
     },
 

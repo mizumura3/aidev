@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-code";
 import { ResultSchema, type Plan, type Result } from "../types.js";
-import { createSafetyHook } from "./shared.js";
+import { createSafetyHook, extractJson, getBaseSdkOptions } from "./shared.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ImplementerInput {
@@ -39,6 +39,7 @@ Output ONLY valid JSON, no markdown fences.`;
   const response = query({
     prompt,
     options: {
+      ...getBaseSdkOptions(),
       cwd: input.cwd,
       permissionMode: "bypassPermissions",
       hooks: { PreToolUse: [createSafetyHook()] },
@@ -53,6 +54,6 @@ Output ONLY valid JSON, no markdown fences.`;
     }
   }
 
-  const parsed = JSON.parse(resultText);
+  const parsed = extractJson(resultText, "Implementer");
   return ResultSchema.parse(parsed);
 }

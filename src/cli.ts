@@ -70,7 +70,9 @@ export function createCli() {
     .option("--dry-run", "Skip push/PR/merge", false)
     .option("--no-merge", "Skip merge after CI passes")
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
+    .option("--claude-path <path>", "Path to native Claude Code executable")
     .action(async (opts) => {
+      if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
       const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
       const cwd = opts.cwd;
@@ -122,7 +124,9 @@ export function createCli() {
     .option("--interval <seconds>", "Poll interval in seconds", parseInt, 30)
     .option("--cwd <path>", "Working directory", process.cwd())
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
+    .option("--claude-path <path>", "Path to native Claude Code executable")
     .action(async (opts) => {
+      if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
       const repo = opts.repo ?? detectRepo(opts.cwd);
       const github = createGitHubAdapter(repo);

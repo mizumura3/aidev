@@ -51,9 +51,9 @@ describe("GitHubAdapter", () => {
   });
 
   describe("createPr", () => {
-    it("creates PR and returns number", async () => {
+    it("creates PR and returns number parsed from URL", async () => {
       mockExeca.mockResolvedValue({
-        stdout: JSON.stringify({ number: 10, url: "https://github.com/..." }),
+        stdout: "https://github.com/mizumura3/inko/pull/10\n",
       } as any);
 
       const prNumber = await gh.createPr({
@@ -85,7 +85,7 @@ describe("GitHubAdapter", () => {
     it("returns passing when all checks pass", async () => {
       mockExeca.mockResolvedValue({
         stdout: JSON.stringify([
-          { state: "SUCCESS", conclusion: "success" },
+          { status: "completed", conclusion: "success" },
         ]),
       } as any);
 
@@ -96,7 +96,7 @@ describe("GitHubAdapter", () => {
     it("returns failing when a check fails", async () => {
       mockExeca.mockResolvedValue({
         stdout: JSON.stringify([
-          { state: "FAILURE", conclusion: "failure" },
+          { status: "completed", conclusion: "failure" },
         ]),
       } as any);
 
@@ -107,7 +107,7 @@ describe("GitHubAdapter", () => {
     it("returns pending when checks are in progress", async () => {
       mockExeca.mockResolvedValue({
         stdout: JSON.stringify([
-          { state: "PENDING", conclusion: "" },
+          { status: "in_progress", conclusion: null },
         ]),
       } as any);
 
@@ -115,10 +115,10 @@ describe("GitHubAdapter", () => {
       expect(status).toBe("pending");
     });
 
-    it("returns passing when no checks", async () => {
+    it("returns pending when no checks exist (push race condition)", async () => {
       mockExeca.mockResolvedValue({ stdout: "[]" } as any);
       const status = await gh.getCiStatus("feature/x");
-      expect(status).toBe("passing");
+      expect(status).toBe("pending");
     });
   });
 

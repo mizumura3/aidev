@@ -12,7 +12,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1",
+    "@anthropic-ai/claude-code": "^1.0.128",
     "commander": "^12",
     "execa": "^9",
     "zod": "^3.24"
