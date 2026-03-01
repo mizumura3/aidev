@@ -118,6 +118,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (!ctx.prNumber) throw new Error("No PR number");
     const maxWait = 10 * 60 * 1000; // 10 minutes
     const pollInterval = 15 * 1000; // 15 seconds
+    const gracePeriod = 30 * 1000; // 30 seconds for CI check runs to register
     const start = Date.now();
 
     while (Date.now() - start < maxWait) {
@@ -136,6 +137,11 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         return transition(ctx, "fixing", {
           fixAttempts: ctx.fixAttempts + 1,
         });
+      }
+      if (status === "no_checks" && Date.now() - start >= gracePeriod) {
+        logger.info("No CI checks found after grace period, treating as passing");
+        if (!shouldAutoMerge(ctx)) return transition(ctx, "done");
+        return transition(ctx, "merging");
       }
       await new Promise((r) => setTimeout(r, pollInterval));
     }

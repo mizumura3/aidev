@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createStateHandlers, type Deps } from "../../src/workflow/states.js";
 import type { RunContext } from "../../src/types.js";
 import type { GitAdapter } from "../../src/adapters/git.js";
@@ -136,5 +136,123 @@ describe("watching_ci handler", () => {
     const result = await handlers.watching_ci!(ctx);
 
     expect(result.nextState).toBe("done");
+  });
+
+  describe("no_checks grace period", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("keeps polling when no_checks is returned during grace period", async () => {
+      const getCiStatus = vi.fn();
+      // First call: no_checks (within grace period), second call: passing
+      getCiStatus.mockResolvedValueOnce("no_checks");
+      getCiStatus.mockResolvedValueOnce("passing");
+
+      const deps = makeDeps({ github: { getCiStatus } });
+      const handlers = createStateHandlers(deps);
+      const ctx = makeCtx({
+        state: "watching_ci",
+        prNumber: 42,
+        autoMerge: true,
+      });
+
+      const promise = handlers.watching_ci!(ctx);
+      // Advance past the poll interval (15s) to trigger second poll
+      await vi.advanceTimersByTimeAsync(15_000);
+      const result = await promise;
+
+      expect(getCiStatus).toHaveBeenCalledTimes(2);
+      expect(result.nextState).toBe("merging");
+    });
+
+    it("treats no_checks as passing after grace period expires", async () => {
+      const getCiStatus = vi.fn().mockResolvedValue("no_checks");
+
+      const deps = makeDeps({ github: { getCiStatus } });
+      const handlers = createStateHandlers(deps);
+      const ctx = makeCtx({
+        state: "watching_ci",
+        prNumber: 42,
+        autoMerge: true,
+      });
+
+      const promise = handlers.watching_ci!(ctx);
+      // Advance past the grace period (30s) + poll intervals
+      // First poll at 0s: no_checks (within grace, wait 15s)
+      // Second poll at 15s: no_checks (within grace, wait 15s)
+      await vi.advanceTimersByTimeAsync(15_000);
+      // Third poll at 30s: no_checks (grace period exceeded, treat as passing)
+      await vi.advanceTimersByTimeAsync(15_000);
+      const result = await promise;
+
+      expect(result.nextState).toBe("merging");
+    });
+
+    it("transitions to done when no_checks after grace period and no auto-merge", async () => {
+      const getCiStatus = vi.fn().mockResolvedValue("no_checks");
+
+      const deps = makeDeps({ github: { getCiStatus } });
+      const handlers = createStateHandlers(deps);
+      const ctx = makeCtx({
+        state: "watching_ci",
+        prNumber: 42,
+        autoMerge: false,
+        issueLabels: [],
+      });
+
+      const promise = handlers.watching_ci!(ctx);
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const result = await promise;
+
+      expect(result.nextState).toBe("done");
+    });
+
+    it("transitions correctly when no_checks is followed by real passing", async () => {
+      const getCiStatus = vi.fn();
+      getCiStatus.mockResolvedValueOnce("no_checks");
+      getCiStatus.mockResolvedValueOnce("passing");
+
+      const deps = makeDeps({ github: { getCiStatus } });
+      const handlers = createStateHandlers(deps);
+      const ctx = makeCtx({
+        state: "watching_ci",
+        prNumber: 42,
+        autoMerge: true,
+      });
+
+      const promise = handlers.watching_ci!(ctx);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const result = await promise;
+
+      expect(getCiStatus).toHaveBeenCalledTimes(2);
+      expect(result.nextState).toBe("merging");
+    });
+
+    it("transitions to fixing when no_checks is followed by failing", async () => {
+      const getCiStatus = vi.fn();
+      getCiStatus.mockResolvedValueOnce("no_checks");
+      getCiStatus.mockResolvedValueOnce("failing");
+
+      const deps = makeDeps({ github: { getCiStatus } });
+      const handlers = createStateHandlers(deps);
+      const ctx = makeCtx({
+        state: "watching_ci",
+        prNumber: 42,
+        autoMerge: true,
+      });
+
+      const promise = handlers.watching_ci!(ctx);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const result = await promise;
+
+      expect(getCiStatus).toHaveBeenCalledTimes(2);
+      expect(result.nextState).toBe("fixing");
+    });
   });
 });
