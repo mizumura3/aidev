@@ -113,10 +113,10 @@ describe("GitHubAdapter", () => {
       expect(status).toBe("pending");
     });
 
-    it("returns pending when no checks exist (push race condition)", async () => {
+    it("returns passing when no checks exist (no CI configured)", async () => {
       mockExeca.mockResolvedValue({ stdout: "[]" } as any);
       const status = await gh.getCiStatus("feature/x");
-      expect(status).toBe("pending");
+      expect(status).toBe("passing");
     });
   });
 
