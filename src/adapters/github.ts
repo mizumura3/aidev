@@ -90,7 +90,7 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
       const checks: Array<{ status: string; conclusion: string | null }> =
         JSON.parse(stdout);
 
-      if (checks.length === 0) return "pending";
+      if (checks.length === 0) return "passing";
       if (checks.some((c) => c.conclusion === "failure")) return "failing";
       if (checks.some((c) => c.status !== "completed")) return "pending";
       return "passing";
