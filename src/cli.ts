@@ -140,6 +140,7 @@ export function createCli() {
           fixAttempts: 0,
           dryRun: opts.dryRun,
           autoMerge: opts.autoMerge,
+          issueLabels: [],
         };
       }
 

@@ -22,6 +22,10 @@ function transition(
   return { nextState, ctx: { ...ctx, ...patch, state: nextState } };
 }
 
+function shouldAutoMerge(ctx: RunContext): boolean {
+  return ctx.autoMerge || ctx.issueLabels.includes("auto-merge");
+}
+
 export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger } = deps;
 
@@ -33,7 +37,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     });
     await git.createBranch(ctx.branch, ctx.cwd);
     logger.info("Created branch", { branch: ctx.branch });
-    return transition(ctx, "planning");
+    return transition(ctx, "planning", { issueLabels: issue.labels });
   };
 
   const planning: StateHandler = async (ctx) => {
@@ -120,7 +124,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       const status = await github.getCiStatus(ctx.branch);
       if (status === "passing") {
         logger.info("CI passed");
-        if (!ctx.autoMerge) return transition(ctx, "done");
+        if (!shouldAutoMerge(ctx)) return transition(ctx, "done");
         return transition(ctx, "merging");
       }
       if (status === "failing") {

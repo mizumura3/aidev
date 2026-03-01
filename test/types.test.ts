@@ -152,6 +152,7 @@ describe("RunContextSchema", () => {
     fixAttempts: 0,
     dryRun: false,
     autoMerge: false,
+    issueLabels: [],
   };
 
   it("accepts valid context", () => {
@@ -190,6 +191,19 @@ describe("RunContextSchema", () => {
     const { autoMerge, ...rest } = validContext;
     const parsed = RunContextSchema.parse(rest);
     expect(parsed.autoMerge).toBe(false);
+  });
+
+  it("defaults issueLabels to empty array", () => {
+    const parsed = RunContextSchema.parse(validContext);
+    expect(parsed.issueLabels).toEqual([]);
+  });
+
+  it("accepts issueLabels with string array", () => {
+    const parsed = RunContextSchema.parse({
+      ...validContext,
+      issueLabels: ["auto-merge", "bug"],
+    });
+    expect(parsed.issueLabels).toEqual(["auto-merge", "bug"]);
   });
 
   it("rejects context without issueNumber", () => {

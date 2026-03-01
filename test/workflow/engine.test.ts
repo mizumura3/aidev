@@ -19,6 +19,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     fixAttempts: 0,
     dryRun: false,
     autoMerge: false,
+    issueLabels: [],
     ...overrides,
   };
 }

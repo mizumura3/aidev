@@ -61,6 +61,7 @@ export const RunContextSchema = z.object({
   fixAttempts: z.number().default(0),
   dryRun: z.boolean(),
   autoMerge: z.boolean().default(false),
+  issueLabels: z.array(z.string()).default([]),
   plan: PlanSchema.optional(),
   result: ResultSchema.optional(),
   review: ReviewSchema.optional(),
