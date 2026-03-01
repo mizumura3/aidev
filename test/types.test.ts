@@ -147,7 +147,7 @@ describe("RunContextSchema", () => {
     repo: "mizumura3/inko",
     cwd: "/tmp/inko",
     state: "init",
-    branch: "devloop/issue-42",
+    branch: "aidev/issue-42",
     maxFixAttempts: 3,
     fixAttempts: 0,
     dryRun: false,

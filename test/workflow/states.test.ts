@@ -12,7 +12,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     repo: "owner/repo",
     cwd: "/tmp/repo",
     state: "init",
-    branch: "devloop/issue-1",
+    branch: "aidev/issue-1",
     maxFixAttempts: 3,
     fixAttempts: 0,
     dryRun: false,

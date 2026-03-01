@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createGitAdapter, type GitAdapter } from "../../src/adapters/git.js";
 
-const mockExeca = vi.fn();
+const { mockExeca } = vi.hoisted(() => ({
+  mockExeca: vi.fn(),
+}));
 vi.mock("execa", () => ({
   execa: mockExeca,
 }));
