@@ -5,6 +5,7 @@ import {
   type Persistence,
 } from "../../src/workflow/engine.js";
 import type { RunContext, RunState } from "../../src/types.js";
+import type { Logger } from "../../src/util/logger.js";
 
 function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
   return {
@@ -172,6 +173,69 @@ describe("runWorkflow", () => {
 
     expect(result.state).toBe("done");
     expect(handlers.creating_pr).toHaveBeenCalledOnce();
+  });
+
+  it("logs per-handler elapsed time when logger is provided", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("planning"),
+      planning: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await runWorkflow(ctx, handlers, persistence, { logger });
+
+    // Should log elapsed time for each handler
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("init"),
+      expect.objectContaining({ elapsedMs: expect.any(Number) })
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("planning"),
+      expect.objectContaining({ elapsedMs: expect.any(Number) })
+    );
+  });
+
+  it("logs total workflow elapsed time when logger is provided", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await runWorkflow(ctx, handlers, persistence, { logger });
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Workflow completed",
+      expect.objectContaining({
+        totalElapsedMs: expect.any(Number),
+        finalState: "done",
+      })
+    );
+  });
+
+  it("does not fail when logger is not provided", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+
+    // No logger — should not throw
+    const result = await runWorkflow(ctx, handlers, persistence);
+    expect(result.state).toBe("done");
   });
 
   it("emits events via onTransition callback", async () => {

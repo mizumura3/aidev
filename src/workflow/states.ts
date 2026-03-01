@@ -38,8 +38,10 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const planning: StateHandler = async (ctx) => {
     const issue = await github.getIssue(ctx.issueNumber);
+    const planStart = performance.now();
     const plan = await runPlanner({ issue, cwd: ctx.cwd }, logger);
-    logger.info("Plan created", { summary: plan.summary });
+    const planElapsed = Math.round(performance.now() - planStart);
+    logger.info("Plan created", { summary: plan.summary, agentElapsedMs: planElapsed });
 
     if (plan.investigation) {
       const comment = `## 🔍 Investigation\n\n${plan.investigation}\n\n## Plan\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
@@ -52,12 +54,15 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const implementing: StateHandler = async (ctx) => {
     if (!ctx.plan) throw new Error("No plan available");
+    const implStart = performance.now();
     const result = await runImplementer(
       { plan: ctx.plan, issueNumber: ctx.issueNumber, cwd: ctx.cwd },
       logger
     );
+    const implElapsed = Math.round(performance.now() - implStart);
     logger.info("Implementation complete", {
       changedFiles: result.changedFiles,
+      agentElapsedMs: implElapsed,
     });
     return transition(ctx, "reviewing", { result });
   };
@@ -65,11 +70,13 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   const reviewing: StateHandler = async (ctx) => {
     if (!ctx.plan) throw new Error("No plan available");
     const diff = await git.diff("main", ctx.cwd);
+    const reviewStart = performance.now();
     const review = await runReviewer(
       { plan: ctx.plan, diff, cwd: ctx.cwd },
       logger
     );
-    logger.info("Review complete", { decision: review.decision });
+    const reviewElapsed = Math.round(performance.now() - reviewStart);
+    logger.info("Review complete", { decision: review.decision, agentElapsedMs: reviewElapsed });
 
     if (review.decision === "changes_requested") {
       return transition(ctx, "implementing", { review });
@@ -137,11 +144,13 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (!ctx.plan) throw new Error("No plan available");
     // TODO: get actual CI logs via gh api
     const ciLog = "CI failure - see logs for details";
+    const fixStart = performance.now();
     const fix = await runFixer(
       { plan: ctx.plan, ciLog, cwd: ctx.cwd },
       logger
     );
-    logger.info("Fix applied", { rootCause: fix.rootCause });
+    const fixElapsed = Math.round(performance.now() - fixStart);
+    logger.info("Fix applied", { rootCause: fix.rootCause, agentElapsedMs: fixElapsed });
 
     await git.addAll(ctx.cwd);
     await git.commit(`fix: ${fix.rootCause}`, ctx.cwd);

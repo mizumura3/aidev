@@ -150,6 +150,7 @@ export function createCli() {
       logger.info("Starting devloop", { runId: ctx.runId, issue: opts.issue, repo: ctx.repo });
 
       const result = await runWorkflow(ctx, handlers, persistence, {
+        logger,
         onTransition: (from, to) =>
           logger.info("State transition", { from, to }),
       });
