@@ -176,7 +176,13 @@ export function createCli() {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
       const repo = opts.repo ?? detectRepo(opts.cwd);
+      const cwd = opts.cwd;
+      const baseDir = join(process.env.HOME ?? "~", ".devloop", "runs");
+
+      const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
+      const persistence = createFilePersistence(baseDir);
+      const handlers = createStateHandlers({ git, github, logger });
 
       logger.info("Watching for issues", { label: opts.label, repo });
 
@@ -192,19 +198,25 @@ export function createCli() {
             title: issue.title,
           });
 
-          // Spawn a run for this issue
-          const { execaCommand } = await import("execa");
-          const args = [
-            "run",
-            "--issue",
-            String(issue.number),
-            "--cwd",
-            opts.cwd,
-            "--repo",
+          const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
+          const ctx: RunContext = {
+            runId,
+            issueNumber: issue.number,
             repo,
-          ];
-          execaCommand(`devloop ${args.join(" ")}`, {
-            stdio: "inherit",
+            cwd,
+            state: "init",
+            branch: `aidev/issue-${issue.number}`,
+            maxFixAttempts: 3,
+            fixAttempts: 0,
+            dryRun: false,
+            autoMerge: false,
+            issueLabels: issue.labels,
+          };
+
+          runWorkflow(ctx, handlers, persistence, {
+            logger,
+            onTransition: (from, to) =>
+              logger.info("State transition", { from, to }),
           }).catch((err) =>
             logger.error("Run failed", {
               issue: issue.number,
