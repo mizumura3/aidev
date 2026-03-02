@@ -51,6 +51,8 @@ node dist/index.js watch --repo <owner/name> --cwd <path>
 
 指定ラベル（デフォルト: `ai:run`）の Issue を定期的にポーリングし、見つかったら自動で開発ループを実行する。Issue に `auto-merge` ラベルがあれば CI 通過後に自動マージされる。
 
+各 Issue は `.worktrees/issue-<number>` に作成される git worktree 内で処理されるため、複数 Issue を並行して安全に処理できる。worktree は処理完了後に自動で削除される。`.worktrees/` を `.gitignore` に追加することを推奨する。
+
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--label <label>` | 監視するラベル | `ai:run` |

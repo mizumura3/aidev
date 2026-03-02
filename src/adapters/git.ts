@@ -7,6 +7,8 @@ export interface GitAdapter {
   push(branch: string, cwd: string): Promise<void>;
   diff(base: string, cwd: string): Promise<string>;
   currentBranch(cwd: string): Promise<string>;
+  addWorktree(path: string, baseBranch: string, cwd: string): Promise<void>;
+  removeWorktree(path: string, cwd: string): Promise<void>;
 }
 
 export function createGitAdapter(): GitAdapter {
@@ -48,6 +50,14 @@ export function createGitAdapter(): GitAdapter {
         { cwd }
       );
       return stdout.trim();
+    },
+
+    async addWorktree(path, baseBranch, cwd) {
+      await execa("git", ["worktree", "add", path, baseBranch], { cwd });
+    },
+
+    async removeWorktree(path, cwd) {
+      await execa("git", ["worktree", "remove", "--force", path], { cwd });
     },
   };
 }

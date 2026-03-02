@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock modules before any imports
+const mockAddWorktree = vi.fn(async () => {});
+const mockRemoveWorktree = vi.fn(async () => {});
+
 vi.mock("../src/adapters/git.js", () => ({
-  createGitAdapter: vi.fn(() => ({ checkout: vi.fn(), push: vi.fn() })),
+  createGitAdapter: vi.fn(() => ({
+    checkout: vi.fn(),
+    push: vi.fn(),
+    addWorktree: mockAddWorktree,
+    removeWorktree: mockRemoveWorktree,
+  })),
 }));
 
 vi.mock("../src/adapters/github.js", () => ({
@@ -230,5 +238,198 @@ describe("watch command", () => {
     expect(ctx1.branch).toBe("aidev/issue-10");
     expect(ctx2.issueNumber).toBe(20);
     expect(ctx2.branch).toBe("aidev/issue-20");
+  });
+
+  it("passes a unique worktree cwd to each issue's runWorkflow", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 10, title: "Issue 10", body: "body", labels: ["ai:run"] },
+        { number: 20, title: "Issue 20", body: "body", labels: ["ai:run"] },
+      ]),
+      getIssue: vi.fn(),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(2);
+
+    const ctx1 = mockRunWorkflow.mock.calls[0][0];
+    const ctx2 = mockRunWorkflow.mock.calls[1][0];
+
+    // Each issue should get a different cwd (worktree path)
+    expect(ctx1.cwd).not.toBe(ctx2.cwd);
+    expect(ctx1.cwd).toContain("worktree");
+    expect(ctx2.cwd).toContain("worktree");
+  });
+
+  it("cleans up worktree after successful runWorkflow", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"] },
+      ]),
+      getIssue: vi.fn(),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+  });
+
+  it("cleans up worktree after failed runWorkflow", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 99, title: "Failing issue", body: "body", labels: ["ai:run"] },
+      ]),
+      getIssue: vi.fn(),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockRejectedValue(new Error("workflow failed"));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+    // Worktree should still be cleaned up even on failure
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not crash when worktree creation fails", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 55, title: "WT fail issue", body: "body", labels: ["ai:run"] },
+      ]),
+      getIssue: vi.fn(),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    mockAddWorktree.mockRejectedValueOnce(new Error("worktree add failed"));
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    // Should not throw
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // runWorkflow should NOT have been called since worktree creation failed
+    expect(mockRunWorkflow).not.toHaveBeenCalled();
   });
 });

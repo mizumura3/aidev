@@ -100,4 +100,26 @@ describe("GitAdapter", () => {
       expect(branch).toBe("main");
     });
   });
+
+  describe("addWorktree", () => {
+    it("runs git worktree add with path and branch", async () => {
+      await git.addWorktree("/tmp/wt-42", "main", cwd);
+      expect(mockExeca).toHaveBeenCalledWith(
+        "git",
+        ["worktree", "add", "/tmp/wt-42", "main"],
+        { cwd }
+      );
+    });
+  });
+
+  describe("removeWorktree", () => {
+    it("runs git worktree remove --force with path", async () => {
+      await git.removeWorktree("/tmp/wt-42", cwd);
+      expect(mockExeca).toHaveBeenCalledWith(
+        "git",
+        ["worktree", "remove", "--force", "/tmp/wt-42"],
+        { cwd }
+      );
+    });
+  });
 });
