@@ -249,4 +249,97 @@ describe("GitHubAdapter", () => {
       expect(issues[0]!.number).toBe(1);
     });
   });
+
+  describe("createIssue", () => {
+    it("calls gh issue create with correct args and labels", async () => {
+      mockExeca.mockResolvedValue({
+        stdout: "https://github.com/mizumura3/inko/issues/42\n",
+      } as any);
+
+      const issueNumber = await gh.createIssue({
+        title: "[aidev] Fix TODO in utils",
+        body: "Found a TODO comment",
+        labels: ["auto-merge", "improvement"],
+      });
+
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "issue",
+        "create",
+        "--repo",
+        repo,
+        "--title",
+        "[aidev] Fix TODO in utils",
+        "--body",
+        "Found a TODO comment",
+        "--label",
+        "auto-merge",
+        "--label",
+        "improvement",
+      ]);
+      expect(issueNumber).toBe(42);
+    });
+
+    it("creates issue with no labels", async () => {
+      mockExeca.mockResolvedValue({
+        stdout: "https://github.com/mizumura3/inko/issues/5\n",
+      } as any);
+
+      const issueNumber = await gh.createIssue({
+        title: "[aidev] Test",
+        body: "body",
+        labels: [],
+      });
+
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "issue",
+        "create",
+        "--repo",
+        repo,
+        "--title",
+        "[aidev] Test",
+        "--body",
+        "body",
+      ]);
+      expect(issueNumber).toBe(5);
+    });
+  });
+
+  describe("searchIssues", () => {
+    it("calls gh search issues with correct query and repo filter", async () => {
+      mockExeca.mockResolvedValue({
+        stdout: JSON.stringify([
+          { number: 10, title: "[aidev] Fix X", body: "details", labels: [{ name: "auto-merge" }] },
+        ]),
+      } as any);
+
+      const issues = await gh.searchIssues("[aidev] Fix X");
+
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "search",
+        "issues",
+        "--repo",
+        repo,
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,labels",
+        "--",
+        "[aidev] Fix X",
+      ]);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toEqual({
+        number: 10,
+        title: "[aidev] Fix X",
+        body: "details",
+        labels: ["auto-merge"],
+      });
+    });
+
+    it("returns empty array when no matching issues", async () => {
+      mockExeca.mockResolvedValue({ stdout: "[]" } as any);
+
+      const issues = await gh.searchIssues("[aidev] nonexistent");
+      expect(issues).toHaveLength(0);
+    });
+  });
 });

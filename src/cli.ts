@@ -7,6 +7,11 @@ import { createGitHubAdapter } from "./adapters/github.js";
 import { createLogger } from "./util/logger.js";
 import { runWorkflow, type Persistence } from "./workflow/engine.js";
 import { createStateHandlers } from "./workflow/states.js";
+import { runImprove } from "./improve/runner.js";
+import { createTodoDetector } from "./improve/detectors/todo.js";
+import { createLintDetector } from "./improve/detectors/lint.js";
+import { createOutdatedDetector } from "./improve/detectors/outdated.js";
+import type { Detector } from "./improve/types.js";
 import type { RunContext } from "./types.js";
 
 function createFilePersistence(baseDir: string): Persistence {
@@ -235,6 +240,48 @@ export function createCli() {
         process.exit(1);
       }
       console.log(JSON.stringify(ctx, null, 2));
+    });
+
+  program
+    .command("improve")
+    .description("Scan repository for improvements and create GitHub Issues")
+    .requiredOption("--repo <owner/name>", "GitHub repo (owner/name)")
+    .option("--cwd <path>", "Working directory", process.cwd())
+    .option("--dry-run", "Print findings without creating issues", false)
+    .option("--watch", "Poll at regular intervals", false)
+    .option("--interval <minutes>", "Watch interval in minutes", parseInt, 60)
+    .option("--detectors <list>", "Comma-separated list of detectors (todo,lint,outdated)", "todo,lint,outdated")
+    .action(async (opts) => {
+      const logger = createLogger("info");
+      const github = createGitHubAdapter(opts.repo);
+
+      const detectorMap: Record<string, () => Detector> = {
+        todo: createTodoDetector,
+        lint: createLintDetector,
+        outdated: createOutdatedDetector,
+      };
+
+      const enabledNames = (opts.detectors as string).split(",").map((s: string) => s.trim());
+      const detectors = enabledNames
+        .filter((name: string) => detectorMap[name])
+        .map((name: string) => detectorMap[name]!());
+
+      const run = () =>
+        runImprove({
+          cwd: opts.cwd,
+          repo: opts.repo,
+          detectors,
+          github,
+          logger,
+          dryRun: opts.dryRun,
+        });
+
+      await run();
+
+      if (opts.watch) {
+        logger.info("Watch mode enabled", { interval: opts.interval });
+        setInterval(run, opts.interval * 60 * 1000);
+      }
     });
 
   return program;
