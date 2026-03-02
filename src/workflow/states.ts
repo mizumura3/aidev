@@ -8,6 +8,8 @@ import { runReviewer } from "../agents/reviewer.js";
 import { runFixer } from "../agents/fixer.js";
 import type { Logger } from "../util/logger.js";
 import type { DocumenterInput } from "../agents/documenter.js";
+import { parseIssueConfig } from "../config/issue-config.js";
+import type { SkippableState } from "../types.js";
 
 export interface Deps {
   git: GitAdapter;
@@ -47,9 +49,38 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       }
     }
 
-    await git.createBranch(ctx.branch, ctx.base, ctx.cwd);
-    logger.info("Created branch", { branch: ctx.branch });
-    return transition(ctx, "planning", { issueLabels: issue.labels });
+    // Parse issue config from body
+    const issueConfig = parseIssueConfig(issue.body);
+    const patch: Partial<RunContext> = {
+      issueLabels: issue.labels,
+      issueTitle: issue.title,
+    };
+
+    // Merge issue config into ctx (only for fields not explicitly set via CLI)
+    if (issueConfig.maxFixAttempts !== undefined && !ctx._cliExplicit?.has("maxFixAttempts")) {
+      patch.maxFixAttempts = issueConfig.maxFixAttempts;
+    }
+    if (issueConfig.autoMerge !== undefined && !ctx._cliExplicit?.has("autoMerge")) {
+      patch.autoMerge = issueConfig.autoMerge;
+    }
+    if (issueConfig.dryRun !== undefined && !ctx._cliExplicit?.has("dryRun")) {
+      patch.dryRun = issueConfig.dryRun;
+    }
+    if (issueConfig.base !== undefined && !ctx._cliExplicit?.has("base")) {
+      patch.base = issueConfig.base;
+    }
+    if (issueConfig.skip) {
+      patch.skipStates = issueConfig.skip as SkippableState[];
+    }
+
+    if (Object.keys(issueConfig).length > 0) {
+      logger.info("Applied issue config", { issueConfig });
+    }
+
+    const mergedCtx = { ...ctx, ...patch };
+    await git.createBranch(mergedCtx.branch, mergedCtx.base, mergedCtx.cwd);
+    logger.info("Created branch", { branch: mergedCtx.branch });
+    return transition(mergedCtx, "planning");
   };
 
   const planning: StateHandler = async (ctx) => {
@@ -84,6 +115,10 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   };
 
   const reviewing: StateHandler = async (ctx) => {
+    if (ctx.skipStates?.includes("reviewing")) {
+      logger.info("Skipping reviewing (configured in issue)");
+      return transition(ctx, "committing");
+    }
     if (!ctx.plan) throw new Error("No plan available");
     const diff = await git.diff(ctx.base, ctx.cwd);
     const reviewStart = performance.now();
@@ -102,7 +137,11 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const committing: StateHandler = async (ctx) => {
     if (!ctx.result) throw new Error("No result available");
-    await runDocumenter({ result: ctx.result, cwd: ctx.cwd }, logger);
+    if (ctx.skipStates?.includes("documenter")) {
+      logger.info("Skipping documenter (configured in issue)");
+    } else {
+      await runDocumenter({ result: ctx.result, cwd: ctx.cwd }, logger);
+    }
     logger.info("Documentation check completed");
     await git.addAll(ctx.cwd);
     await git.commit(ctx.result.commitMessageDraft, ctx.cwd);
@@ -130,6 +169,11 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const watching_ci: StateHandler = async (ctx) => {
     if (!ctx.prNumber) throw new Error("No PR number");
+    if (ctx.skipStates?.includes("watching_ci")) {
+      logger.info("Skipping watching_ci (configured in issue)");
+      if (!shouldAutoMerge(ctx)) return transition(ctx, "done");
+      return transition(ctx, "merging");
+    }
     const maxWait = 10 * 60 * 1000; // 10 minutes
     const pollInterval = 15 * 1000; // 15 seconds
     const gracePeriod = 30 * 1000; // 30 seconds for CI check runs to register

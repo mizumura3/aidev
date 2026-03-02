@@ -11,6 +11,7 @@ export interface Persistence {
 
 export interface WorkflowOptions {
   onTransition?: (from: RunState, to: RunState) => void;
+  onComplete?: (ctx: RunContext) => Promise<void>;
   logger?: Logger;
 }
 
@@ -46,6 +47,12 @@ export async function runWorkflow(
 
   const totalElapsedMs = Math.round(performance.now() - workflowStart);
   logger?.info("Workflow completed", { totalElapsedMs, finalState: ctx.state });
+
+  try {
+    await options?.onComplete?.(ctx);
+  } catch {
+    logger?.warn("onComplete callback failed");
+  }
 
   return ctx;
 }

@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export const SkippableStateSchema = z.enum([
+  "reviewing",
+  "watching_ci",
+  "documenter",
+]);
+export type SkippableState = z.infer<typeof SkippableStateSchema>;
+
 export const RunStateSchema = z.enum([
   "init",
   "planning",
@@ -64,13 +71,18 @@ export const RunContextSchema = z.object({
   autoMerge: z.boolean().default(false),
   issueLabels: z.array(z.string()).default([]),
   skipAuthorCheck: z.boolean().default(false),
+  skipStates: z.array(SkippableStateSchema).default([]),
+  issueTitle: z.string().optional(),
   plan: PlanSchema.optional(),
   result: ResultSchema.optional(),
   review: ReviewSchema.optional(),
   fix: FixSchema.optional(),
   prNumber: z.number().optional(),
 });
-export type RunContext = z.infer<typeof RunContextSchema>;
+export type RunContext = z.infer<typeof RunContextSchema> & {
+  /** Set of CLI flags explicitly specified (transient, not persisted) */
+  _cliExplicit?: Set<string>;
+};
 
 export type StateHandler = (
   ctx: RunContext

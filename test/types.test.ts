@@ -155,6 +155,7 @@ describe("RunContextSchema", () => {
     autoMerge: false,
     issueLabels: [],
     skipAuthorCheck: false,
+    skipStates: [],
   };
 
   it("accepts valid context", () => {
@@ -226,5 +227,40 @@ describe("RunContextSchema", () => {
   it("rejects context without issueNumber", () => {
     const { issueNumber, ...rest } = validContext;
     expect(() => RunContextSchema.parse(rest)).toThrow();
+  });
+
+  it("defaults skipStates to empty array", () => {
+    const parsed = RunContextSchema.parse(validContext);
+    expect(parsed.skipStates).toEqual([]);
+  });
+
+  it("accepts valid skipStates", () => {
+    const parsed = RunContextSchema.parse({
+      ...validContext,
+      skipStates: ["reviewing", "watching_ci", "documenter"],
+    });
+    expect(parsed.skipStates).toEqual(["reviewing", "watching_ci", "documenter"]);
+  });
+
+  it("rejects invalid skipStates values", () => {
+    expect(() =>
+      RunContextSchema.parse({
+        ...validContext,
+        skipStates: ["invalid_state"],
+      })
+    ).toThrow();
+  });
+
+  it("accepts issueTitle", () => {
+    const parsed = RunContextSchema.parse({
+      ...validContext,
+      issueTitle: "Add feature X",
+    });
+    expect(parsed.issueTitle).toBe("Add feature X");
+  });
+
+  it("defaults issueTitle to undefined", () => {
+    const parsed = RunContextSchema.parse(validContext);
+    expect(parsed.issueTitle).toBeUndefined();
   });
 });

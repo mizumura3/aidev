@@ -9,6 +9,7 @@ import { createLogger } from "./util/logger.js";
 import { runWorkflow, type Persistence } from "./workflow/engine.js";
 import { createStateHandlers } from "./workflow/states.js";
 import { runDocumenter } from "./agents/documenter.js";
+import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import type { RunContext } from "./types.js";
 
 function createFilePersistence(baseDir: string): Persistence {
@@ -84,7 +85,7 @@ export function createCli() {
 
   program.name("aidev").description("AI-powered development loop").version("0.0.1");
 
-  program
+  const runCmd = program
     .command("run")
     .description("Run the full dev loop for an issue")
     .requiredOption("--issue <number>", "GitHub issue number", parseInt)
@@ -97,8 +98,9 @@ export function createCli() {
     .option("--claude-path <path>", "Path to native Claude Code executable")
     .option("--resume", "Resume the latest run for this issue")
     .option("-y, --yes", "Skip interactive confirmation", false)
-    .option("--allow-foreign-issues", "Allow processing issues from other users", false)
-    .action(async (opts) => {
+    .option("--allow-foreign-issues", "Allow processing issues from other users", false);
+
+  runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
       const baseDir = join(
@@ -164,6 +166,20 @@ export function createCli() {
           }
         }
 
+        // Track which flags were explicitly set via CLI
+        const cliExplicit = new Set<string>();
+        const flagMap: Record<string, string> = {
+          maxFixAttempts: "max-fix-attempts",
+          dryRun: "dry-run",
+          autoMerge: "auto-merge",
+          base: "base",
+        };
+        for (const [ctxKey, cliName] of Object.entries(flagMap)) {
+          if (runCmd.getOptionValueSource(cliName) === "cli") {
+            cliExplicit.add(ctxKey);
+          }
+        }
+
         ctx = {
           runId,
           issueNumber: opts.issue,
@@ -177,7 +193,9 @@ export function createCli() {
           dryRun: opts.dryRun,
           autoMerge: opts.autoMerge,
           issueLabels: [],
+          skipStates: [],
           skipAuthorCheck: opts.allowForeignIssues,
+          _cliExplicit: cliExplicit.size > 0 ? cliExplicit : undefined,
         };
       }
 
@@ -185,12 +203,31 @@ export function createCli() {
       const github = createGitHubAdapter(ctx.repo);
       const handlers = createStateHandlers({ git, github, logger, runDocumenter });
 
+      const slackNotify = createSlackNotifier({
+        webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
+        botToken: process.env.AIDEV_SLACK_BOT_TOKEN,
+        channel: process.env.AIDEV_SLACK_CHANNEL,
+      });
+
       logger.info("Starting devloop", { runId: ctx.runId, issue: opts.issue, repo: ctx.repo });
+      const workflowStart = performance.now();
 
       const result = await runWorkflow(ctx, handlers, persistence, {
         logger,
         onTransition: (from, to) =>
           logger.info("State transition", { from, to }),
+        onComplete: async (finalCtx) => {
+          const elapsedMs = Math.round(performance.now() - workflowStart);
+          const message = formatSlackMessage({
+            issueNumber: finalCtx.issueNumber,
+            issueTitle: finalCtx.issueTitle,
+            repo: finalCtx.repo,
+            finalState: finalCtx.state as "done" | "failed",
+            elapsedMs,
+            prNumber: finalCtx.prNumber,
+          });
+          await slackNotify(message);
+        },
       });
 
       if (result.state === "done") {
@@ -221,6 +258,12 @@ export function createCli() {
       const github = createGitHubAdapter(repo);
       const persistence = createFilePersistence(baseDir);
       const handlers = createStateHandlers({ git, github, logger, runDocumenter });
+
+      const slackNotify = createSlackNotifier({
+        webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
+        botToken: process.env.AIDEV_SLACK_BOT_TOKEN,
+        channel: process.env.AIDEV_SLACK_CHANNEL,
+      });
 
       logger.info("Watching for issues", { label: opts.label, repo });
 
@@ -266,13 +309,27 @@ export function createCli() {
                 dryRun: false,
                 autoMerge: false,
                 issueLabels: issue.labels,
+                skipStates: [],
                 skipAuthorCheck: false,
               };
 
+              const issueStart = performance.now();
               await runWorkflow(ctx, handlers, persistence, {
                 logger,
                 onTransition: (from, to) =>
                   logger.info("State transition", { from, to }),
+                onComplete: async (finalCtx) => {
+                  const elapsedMs = Math.round(performance.now() - issueStart);
+                  const message = formatSlackMessage({
+                    issueNumber: finalCtx.issueNumber,
+                    issueTitle: finalCtx.issueTitle,
+                    repo: finalCtx.repo,
+                    finalState: finalCtx.state as "done" | "failed",
+                    elapsedMs,
+                    prNumber: finalCtx.prNumber,
+                  });
+                  await slackNotify(message);
+                },
               });
             } finally {
               await git.removeWorktree(worktreePath, cwd).catch((err) =>

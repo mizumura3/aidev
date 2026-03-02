@@ -20,6 +20,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
+    skipStates: [],
     ...overrides,
   };
 }
@@ -237,6 +238,53 @@ describe("runWorkflow", () => {
     // No logger — should not throw
     const result = await runWorkflow(ctx, handlers, persistence);
     expect(result.state).toBe("done");
+  });
+
+  it("calls onComplete with final context when workflow ends", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const onComplete = vi.fn(async () => {});
+
+    await runWorkflow(ctx, handlers, persistence, { onComplete });
+
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "done" })
+    );
+  });
+
+  it("calls onComplete on failed workflow too", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("failed"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const onComplete = vi.fn(async () => {});
+
+    await runWorkflow(ctx, handlers, persistence, { onComplete });
+
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "failed" })
+    );
+  });
+
+  it("does not fail workflow when onComplete throws", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const onComplete = vi.fn(async () => {
+      throw new Error("Slack notification failed");
+    });
+
+    const result = await runWorkflow(ctx, handlers, persistence, { onComplete });
+
+    expect(result.state).toBe("done");
+    expect(onComplete).toHaveBeenCalledOnce();
   });
 
   it("emits events via onTransition callback", async () => {

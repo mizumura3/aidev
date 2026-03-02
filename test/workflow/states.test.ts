@@ -27,6 +27,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
+    skipStates: [],
     base: "main",
     ...overrides,
   };
@@ -174,6 +175,96 @@ describe("init handler", () => {
     );
   });
 
+  it("parses issue config from body and merges into ctx", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nmaxFixAttempts: 5\nautoMerge: true\nbase: release/1.3\nskip:\n  - reviewing\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.maxFixAttempts).toBe(5);
+    expect(result.ctx.autoMerge).toBe(true);
+    expect(result.ctx.base).toBe("release/1.3");
+    expect(result.ctx.skipStates).toEqual(["reviewing"]);
+  });
+
+  it("does not override ctx values when issue body has no aidev block", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "Just a regular issue",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ maxFixAttempts: 7 });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.maxFixAttempts).toBe(7);
+    expect(result.ctx.skipStates).toEqual([]);
+  });
+
+  it("saves issueTitle from fetched issue", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Add awesome feature",
+          body: "",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.issueTitle).toBe("Add awesome feature");
+  });
+
+  it("uses branch from base in issue config for git.createBranch", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nbase: release/2.0\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    // Issue config base should be used for branch creation
+    expect(deps.git.createBranch).toHaveBeenCalledWith(
+      ctx.branch,
+      "release/2.0",
+      ctx.cwd
+    );
+    expect(result.ctx.base).toBe("release/2.0");
+  });
+
   it("skips author check when skipAuthorCheck is true", async () => {
     const deps = makeDeps({
       github: {
@@ -199,6 +290,39 @@ describe("init handler", () => {
 });
 
 describe("watching_ci handler", () => {
+  it("skips to merging when skipStates includes watching_ci and autoMerge", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "watching_ci",
+      prNumber: 42,
+      skipStates: ["watching_ci"],
+      autoMerge: true,
+    });
+
+    const result = await handlers.watching_ci!(ctx);
+
+    expect(result.nextState).toBe("merging");
+    expect(deps.github.getCiStatus).not.toHaveBeenCalled();
+  });
+
+  it("skips to done when skipStates includes watching_ci and no autoMerge", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "watching_ci",
+      prNumber: 42,
+      skipStates: ["watching_ci"],
+      autoMerge: false,
+      issueLabels: [],
+    });
+
+    const result = await handlers.watching_ci!(ctx);
+
+    expect(result.nextState).toBe("done");
+    expect(deps.github.getCiStatus).not.toHaveBeenCalled();
+  });
+
   it("transitions to merging when issueLabels includes auto-merge", async () => {
     const deps = makeDeps();
     const handlers = createStateHandlers(deps);
@@ -439,9 +563,49 @@ describe("committing handler", () => {
       "No result available"
     );
   });
+
+  it("skips runDocumenter when skipStates includes documenter", async () => {
+    const runDocumenter = vi.fn(async () => {});
+    const deps = makeDeps({ runDocumenter });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "committing",
+      result,
+      skipStates: ["documenter"],
+    });
+
+    await handlers.committing!(ctx);
+
+    expect(runDocumenter).not.toHaveBeenCalled();
+    expect(deps.git.addAll).toHaveBeenCalled();
+    expect(deps.git.commit).toHaveBeenCalled();
+  });
 });
 
 describe("reviewing handler", () => {
+  it("skips to committing when skipStates includes reviewing", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      skipStates: ["reviewing"],
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.nextState).toBe("committing");
+    // Should not call git.diff or runReviewer
+    expect(deps.git.diff).not.toHaveBeenCalled();
+  });
+
   it("passes ctx.base to git.diff instead of hardcoded 'main'", async () => {
     const diff = vi.fn(async () => "some diff");
     const deps = makeDeps({ git: { diff } });
