@@ -92,6 +92,7 @@ export function createCli() {
     .option("--max-fix-attempts <n>", "Max CI fix attempts", parseInt, 3)
     .option("--dry-run", "Skip push/PR/merge", false)
     .option("--auto-merge", "Merge PR and close issue after CI passes", false)
+    .option("--base <branch>", "Base branch or tag to create branch from", "main")
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
     .option("--claude-path <path>", "Path to native Claude Code executable")
     .option("--resume", "Resume the latest run for this issue")
@@ -170,6 +171,7 @@ export function createCli() {
           cwd,
           state: "init",
           branch,
+          base: opts.base,
           maxFixAttempts: opts.maxFixAttempts,
           fixAttempts: 0,
           dryRun: opts.dryRun,
@@ -205,6 +207,7 @@ export function createCli() {
     .option("--label <label>", "Label to watch", "ai:run")
     .option("--interval <seconds>", "Poll interval in seconds", parseInt, 30)
     .option("--cwd <path>", "Working directory", process.cwd())
+    .option("--base <branch>", "Base branch or tag to create worktrees from", "main")
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
     .option("--claude-path <path>", "Path to native Claude Code executable")
     .action(async (opts) => {
@@ -248,7 +251,7 @@ export function createCli() {
           const worktreePath = join(cwd, ".worktrees", `issue-${issue.number}`);
 
           const runIssue = async () => {
-            await git.addWorktree(worktreePath, "main", cwd);
+            await git.addWorktree(worktreePath, opts.base, cwd);
             try {
               const ctx: RunContext = {
                 runId,
@@ -257,6 +260,7 @@ export function createCli() {
                 cwd: worktreePath,
                 state: "init",
                 branch: `aidev/issue-${issue.number}`,
+                base: opts.base,
                 maxFixAttempts: 3,
                 fixAttempts: 0,
                 dryRun: false,

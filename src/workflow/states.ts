@@ -47,7 +47,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       }
     }
 
-    await git.createBranch(ctx.branch, ctx.cwd);
+    await git.createBranch(ctx.branch, ctx.base, ctx.cwd);
     logger.info("Created branch", { branch: ctx.branch });
     return transition(ctx, "planning", { issueLabels: issue.labels });
   };
@@ -85,7 +85,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const reviewing: StateHandler = async (ctx) => {
     if (!ctx.plan) throw new Error("No plan available");
-    const diff = await git.diff("main", ctx.cwd);
+    const diff = await git.diff(ctx.base, ctx.cwd);
     const reviewStart = performance.now();
     const review = await runReviewer(
       { plan: ctx.plan, diff, cwd: ctx.cwd },
@@ -122,7 +122,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       title: ctx.result.commitMessageDraft.split("\n")[0]!,
       body: ctx.result.prBodyDraft,
       head: ctx.branch,
-      base: "main",
+      base: ctx.base,
     });
     logger.info("PR created", { prNumber });
     return transition(ctx, "watching_ci", { prNumber });

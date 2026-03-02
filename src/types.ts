@@ -57,6 +57,7 @@ export const RunContextSchema = z.object({
   cwd: z.string(),
   state: RunStateSchema,
   branch: z.string(),
+  base: z.string().default("main"),
   maxFixAttempts: z.number().default(3),
   fixAttempts: z.number().default(0),
   dryRun: z.boolean(),

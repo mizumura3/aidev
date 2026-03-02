@@ -1,7 +1,7 @@
 import { execa } from "execa";
 
 export interface GitAdapter {
-  createBranch(name: string, cwd: string): Promise<void>;
+  createBranch(name: string, base: string, cwd: string): Promise<void>;
   addAll(cwd: string): Promise<void>;
   commit(message: string, cwd: string): Promise<void>;
   push(branch: string, cwd: string): Promise<void>;
@@ -13,12 +13,12 @@ export interface GitAdapter {
 
 export function createGitAdapter(): GitAdapter {
   return {
-    async createBranch(name, cwd) {
+    async createBranch(name, base, cwd) {
       try {
-        await execa("git", ["checkout", "-b", name], { cwd });
+        await execa("git", ["checkout", "-b", name, base], { cwd });
       } catch {
-        // Branch already exists — reset it from main
-        await execa("git", ["checkout", "main"], { cwd });
+        // Branch already exists — reset it from base
+        await execa("git", ["checkout", base], { cwd });
         await execa("git", ["branch", "-D", name], { cwd });
         await execa("git", ["checkout", "-b", name], { cwd });
       }

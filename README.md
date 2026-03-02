@@ -31,6 +31,7 @@ node dist/index.js run --issue <number> --repo <owner/name> --cwd <path>
 | `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
 | `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
 | `--auto-merge` | CI 通過後に自動マージ | `false` |
+| `--base <branch>` | ブランチ作成元のベースブランチまたはタグ | `main` |
 | `--dry-run` | push / PR 作成 / マージをスキップ | `false` |
 | `--resume` | 前回の実行を途中から再開 | — |
 | `--max-fix-attempts <n>` | CI 失敗時の最大修正回数 | `3` |
@@ -69,6 +70,7 @@ node dist/index.js watch --repo <owner/name> --cwd <path>
 |-----------|------|-----------|
 | `--label <label>` | 監視するラベル | `ai:run` |
 | `--interval <seconds>` | ポーリング間隔（秒） | `30` |
+| `--base <branch>` | worktree 作成元のベースブランチまたはタグ | `main` |
 | `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
 | `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
 | `--claude-path <path>` | Claude Code バイナリのパス | PATH から自動検出 |

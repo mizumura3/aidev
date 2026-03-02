@@ -441,6 +441,114 @@ describe("watch command", () => {
     expect(mockRunWorkflow).not.toHaveBeenCalled();
   });
 
+  it("passes --base option to addWorktree and RunContext", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"], author: "testuser" },
+      ]),
+      getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+      "--base",
+      "v1.2.0",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // addWorktree should be called with the custom base
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+    expect(mockAddWorktree.mock.calls[0][1]).toBe("v1.2.0");
+
+    // RunContext should include the custom base
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.base).toBe("v1.2.0");
+  });
+
+  it("defaults base to 'main' when --base is not specified", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"], author: "testuser" },
+      ]),
+      getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // addWorktree should be called with default "main"
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+    expect(mockAddWorktree.mock.calls[0][1]).toBe("main");
+
+    // RunContext should have default base "main"
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.base).toBe("main");
+  });
+
   it("skips foreign issues with warning log in watch mode", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
@@ -544,6 +652,94 @@ describe("run command", () => {
     expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
     const ctx = mockRunWorkflow.mock.calls[0][0];
     expect(ctx.skipAuthorCheck).toBe(true);
+  });
+
+  it("passes --base option to RunContext", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+      "--base",
+      "v1.2.0",
+    ]);
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.base).toBe("v1.2.0");
+  });
+
+  it("defaults base to 'main' when --base is not specified in run", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+    ]);
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.base).toBe("main");
   });
 
   it("skips confirmation with --yes flag", async () => {

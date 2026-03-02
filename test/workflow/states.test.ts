@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.mock("../../src/agents/reviewer.js", () => ({
+  runReviewer: vi.fn(async () => ({
+    decision: "approve",
+    mustFix: [],
+    summary: "Looks good",
+  })),
+}));
+
 import { createStateHandlers, type Deps } from "../../src/workflow/states.js";
 import type { RunContext } from "../../src/types.js";
 import type { GitAdapter } from "../../src/adapters/git.js";
@@ -18,6 +27,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
+    base: "main",
     ...overrides,
   };
 }
@@ -134,6 +144,34 @@ describe("init handler", () => {
     const result = await handlers.init!(ctx);
 
     expect(result.nextState).toBe("planning");
+  });
+
+  it("passes ctx.base to git.createBranch", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ base: "v1.2.0" });
+
+    await handlers.init!(ctx);
+
+    expect(deps.git.createBranch).toHaveBeenCalledWith(
+      ctx.branch,
+      "v1.2.0",
+      ctx.cwd
+    );
+  });
+
+  it("passes default base 'main' to git.createBranch", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    await handlers.init!(ctx);
+
+    expect(deps.git.createBranch).toHaveBeenCalledWith(
+      ctx.branch,
+      "main",
+      ctx.cwd
+    );
   });
 
   it("skips author check when skipAuthorCheck is true", async () => {
@@ -399,6 +437,94 @@ describe("committing handler", () => {
 
     await expect(handlers.committing!(ctx)).rejects.toThrow(
       "No result available"
+    );
+  });
+});
+
+describe("reviewing handler", () => {
+  it("passes ctx.base to git.diff instead of hardcoded 'main'", async () => {
+    const diff = vi.fn(async () => "some diff");
+    const deps = makeDeps({ git: { diff } });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      base: "v1.2.0",
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    await handlers.reviewing!(ctx);
+
+    expect(diff).toHaveBeenCalledWith("v1.2.0", ctx.cwd);
+  });
+
+  it("uses default base 'main' for git.diff when base is not customized", async () => {
+    const diff = vi.fn(async () => "some diff");
+    const deps = makeDeps({ git: { diff } });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    await handlers.reviewing!(ctx);
+
+    expect(diff).toHaveBeenCalledWith("main", ctx.cwd);
+  });
+});
+
+describe("creating_pr handler", () => {
+  const result = {
+    changeSummary: "Added feature X",
+    changedFiles: ["src/foo.ts"],
+    testsRun: true,
+    commitMessageDraft: "feat: add feature X",
+    prBodyDraft: "## Summary\nAdded feature X",
+  };
+
+  it("passes ctx.base as PR base instead of hardcoded 'main'", async () => {
+    const createPr = vi.fn(async () => 42);
+    const deps = makeDeps({ github: { createPr } });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "creating_pr",
+      base: "release/1.3",
+      result,
+    });
+
+    await handlers.creating_pr!(ctx);
+
+    expect(createPr).toHaveBeenCalledWith(
+      expect.objectContaining({ base: "release/1.3" })
+    );
+  });
+
+  it("uses default base 'main' for PR when base is not customized", async () => {
+    const createPr = vi.fn(async () => 42);
+    const deps = makeDeps({ github: { createPr } });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "creating_pr",
+      result,
+    });
+
+    await handlers.creating_pr!(ctx);
+
+    expect(createPr).toHaveBeenCalledWith(
+      expect.objectContaining({ base: "main" })
     );
   });
 });
