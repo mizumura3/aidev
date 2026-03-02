@@ -10,9 +10,14 @@ import type {
 const DANGEROUS_BASH_PATTERNS = [
   /\bgit\s+push\b/,
   /\bgit\s+push\s+--force\b/,
+  /\bgit\s+reset\s+--hard\b/,
+  /\bgit\s+filter-branch\b/,
+  /\bgit\s+checkout\s+(--\s+)?\./,
+  /\bgit\s+restore\s+\./,
+  /\bgit\s+clean\s+-fd/,
   /\bgh\s+pr\s+merge\b/,
   /\bgh\s+issue\s+close\b/,
-  /\brm\s+-rf\s+\//,
+  /\brm\s+-rf\b/,
   /\bsudo\b/,
 ];
 
