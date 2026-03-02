@@ -29,8 +29,22 @@ When you are done, respond ONLY with a JSON object:
   "changedFiles": ["string[] - files modified"],
   "testsRun": true/false,
   "commitMessageDraft": "string - conventional commit message",
-  "prBodyDraft": "string - PR description in markdown"
+  "prBodyDraft": "string - PR description in markdown, following the format below"
 }
+
+The prBodyDraft MUST follow this format:
+## 概要
+<this PR's purpose>
+
+## 変更内容
+- <bullet list of changes>
+
+## テスト
+- [ ] 既存テストがパスすることを確認
+- [ ] 必要に応じて新規テストを追加
+
+## 関連 Issue
+closes #${input.issueNumber}
 
 Output ONLY valid JSON, no markdown fences.`;
 
