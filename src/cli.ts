@@ -262,6 +262,7 @@ export function createCli() {
                 dryRun: false,
                 autoMerge: false,
                 issueLabels: issue.labels,
+                skipAuthorCheck: false,
               };
 
               await runWorkflow(ctx, handlers, persistence, {
