@@ -43,18 +43,21 @@ node dist/index.js run --issue <number> --repo <owner/name> --cwd <path>
 - `--auto-merge` フラグを指定
 - Issue に `auto-merge` ラベルを付与
 
-### `watch` — ラベル付き Issue を監視
+### `watch` — ラベル付き Issue を監視して自動処理
 
 ```bash
 node dist/index.js watch --repo <owner/name> --cwd <path>
 ```
 
-指定ラベル（デフォルト: `ai:run`）の Issue を定期的にポーリングし、見つかったら `run` を実行する。
+指定ラベル（デフォルト: `ai:run`）の Issue を定期的にポーリングし、見つかったら自動で開発ループを実行する。Issue に `auto-merge` ラベルがあれば CI 通過後に自動マージされる。
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--label <label>` | 監視するラベル | `ai:run` |
 | `--interval <seconds>` | ポーリング間隔（秒） | `30` |
+| `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
+| `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
+| `--claude-path <path>` | Claude Code バイナリのパス | PATH から自動検出 |
 
 ### `status` — 実行状態を確認
 
