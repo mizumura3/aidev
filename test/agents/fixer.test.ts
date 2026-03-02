@@ -9,11 +9,15 @@ vi.mock("@anthropic-ai/claude-code", () => ({
   query: mockQuery,
 }));
 
-vi.mock("../../src/agents/shared.js", () => ({
-  createSafetyHook: () => ({ command: "true" }),
-  extractJson: mockExtractJson,
-  getBaseSdkOptions: () => ({ pathToClaudeCodeExecutable: "/usr/bin/claude" }),
-}));
+vi.mock("../../src/agents/shared.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/agents/shared.js")>();
+  return {
+    ...actual,
+    createSafetyHook: () => ({ command: "true" }),
+    extractJson: mockExtractJson,
+    getBaseSdkOptions: () => ({ pathToClaudeCodeExecutable: "/usr/bin/claude" }),
+  };
+});
 
 import { runFixer } from "../../src/agents/fixer.js";
 
