@@ -200,25 +200,41 @@ export function createCli() {
           });
 
           const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
-          const ctx: RunContext = {
-            runId,
-            issueNumber: issue.number,
-            repo,
-            cwd,
-            state: "init",
-            branch: `aidev/issue-${issue.number}`,
-            maxFixAttempts: 3,
-            fixAttempts: 0,
-            dryRun: false,
-            autoMerge: false,
-            issueLabels: issue.labels,
+          const worktreePath = join(cwd, ".worktrees", `issue-${issue.number}`);
+
+          const runIssue = async () => {
+            await git.addWorktree(worktreePath, "main", cwd);
+            try {
+              const ctx: RunContext = {
+                runId,
+                issueNumber: issue.number,
+                repo,
+                cwd: worktreePath,
+                state: "init",
+                branch: `aidev/issue-${issue.number}`,
+                maxFixAttempts: 3,
+                fixAttempts: 0,
+                dryRun: false,
+                autoMerge: false,
+                issueLabels: issue.labels,
+              };
+
+              await runWorkflow(ctx, handlers, persistence, {
+                logger,
+                onTransition: (from, to) =>
+                  logger.info("State transition", { from, to }),
+              });
+            } finally {
+              await git.removeWorktree(worktreePath, cwd).catch((err) =>
+                logger.error("Worktree cleanup failed", {
+                  path: worktreePath,
+                  error: String(err),
+                })
+              );
+            }
           };
 
-          runWorkflow(ctx, handlers, persistence, {
-            logger,
-            onTransition: (from, to) =>
-              logger.info("State transition", { from, to }),
-          }).catch((err) =>
+          runIssue().catch((err) =>
             logger.error("Run failed", {
               issue: issue.number,
               error: String(err),
