@@ -62,6 +62,7 @@ export const RunContextSchema = z.object({
   dryRun: z.boolean(),
   autoMerge: z.boolean().default(false),
   issueLabels: z.array(z.string()).default([]),
+  skipAuthorCheck: z.boolean().default(false),
   plan: PlanSchema.optional(),
   result: ResultSchema.optional(),
   review: ReviewSchema.optional(),

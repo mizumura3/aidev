@@ -153,6 +153,7 @@ describe("RunContextSchema", () => {
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
+    skipAuthorCheck: false,
   };
 
   it("accepts valid context", () => {

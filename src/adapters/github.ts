@@ -5,6 +5,7 @@ export interface Issue {
   title: string;
   body: string;
   labels: string[];
+  author: string;
 }
 
 export interface CreatePrOpts {
@@ -18,6 +19,7 @@ export type CiStatus = "passing" | "failing" | "pending" | "no_checks";
 
 export interface GitHubAdapter {
   getIssue(number: number): Promise<Issue>;
+  getAuthenticatedUser(): Promise<string>;
   commentOnIssue(number: number, body: string): Promise<void>;
   createPr(opts: CreatePrOpts): Promise<number>;
   getCiStatus(branch: string): Promise<CiStatus>;
@@ -37,7 +39,7 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         "--repo",
         repo,
         "--json",
-        "number,title,body,labels",
+        "number,title,body,labels,author",
       ]);
       const raw = JSON.parse(stdout);
       return {
@@ -45,7 +47,18 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         title: raw.title,
         body: raw.body,
         labels: raw.labels.map((l: { name: string }) => l.name),
+        author: raw.author.login,
       };
+    },
+
+    async getAuthenticatedUser() {
+      const { stdout } = await execa("gh", [
+        "api",
+        "user",
+        "--jq",
+        ".login",
+      ]);
+      return stdout.trim();
     },
 
     async commentOnIssue(number, body) {
@@ -161,19 +174,21 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         "--label",
         label,
         "--json",
-        "number,title,body,labels",
+        "number,title,body,labels,author",
       ]);
       const raw: Array<{
         number: number;
         title: string;
         body: string;
         labels: Array<{ name: string }>;
+        author: { login: string };
       }> = JSON.parse(stdout);
       return raw.map((r) => ({
         number: r.number,
         title: r.title,
         body: r.body,
         labels: r.labels.map((l) => l.name),
+        author: r.author.login,
       }));
     },
   };

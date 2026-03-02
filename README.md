@@ -35,6 +35,16 @@ node dist/index.js run --issue <number> --repo <owner/name> --cwd <path>
 | `--resume` | 前回の実行を途中から再開 | — |
 | `--max-fix-attempts <n>` | CI 失敗時の最大修正回数 | `3` |
 | `--claude-path <path>` | Claude Code バイナリのパス | PATH から自動検出 |
+| `-y, --yes` | 実行前の確認プロンプトをスキップ | `false` |
+| `--allow-foreign-issues` | 他ユーザーが作成した Issue の処理を許可 | `false` |
+
+#### 実行確認
+
+`run` コマンドは実行前に Issue の内容（タイトル・作成者・本文）を表示し、確認プロンプトを表示する。`-y` / `--yes` で確認をスキップできる。非対話環境（TTY でない場合）では確認は自動スキップされる。
+
+#### プロンプトインジェクション対策
+
+デフォルトでは、Issue の作成者が認証ユーザー自身でない場合、`init` フェーズでエラーとなる。他ユーザーの Issue を処理する場合は `--allow-foreign-issues` を指定する。
 
 #### 自動マージ
 
@@ -50,6 +60,8 @@ node dist/index.js watch --repo <owner/name> --cwd <path>
 ```
 
 指定ラベル（デフォルト: `ai:run`）の Issue を定期的にポーリングし、見つかったら自動で開発ループを実行する。Issue に `auto-merge` ラベルがあれば CI 通過後に自動マージされる。
+
+セキュリティのため、認証ユーザー自身が作成した Issue のみ処理される。他ユーザーの Issue はスキップされログに警告が出力される。
 
 各 Issue は `.worktrees/issue-<number>` に作成される git worktree 内で処理されるため、複数 Issue を並行して安全に処理できる。worktree は処理完了後に自動で削除される。`.worktrees/` を `.gitignore` に追加することを推奨する。
 

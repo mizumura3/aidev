@@ -2,8 +2,9 @@ import { Command } from "commander";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { createGitAdapter } from "./adapters/git.js";
-import { createGitHubAdapter } from "./adapters/github.js";
+import { createGitHubAdapter, type Issue } from "./adapters/github.js";
 import { createLogger } from "./util/logger.js";
 import { runWorkflow, type Persistence } from "./workflow/engine.js";
 import { createStateHandlers } from "./workflow/states.js";
@@ -94,6 +95,8 @@ export function createCli() {
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
     .option("--claude-path <path>", "Path to native Claude Code executable")
     .option("--resume", "Resume the latest run for this issue")
+    .option("-y, --yes", "Skip interactive confirmation", false)
+    .option("--allow-foreign-issues", "Allow processing issues from other users", false)
     .action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
@@ -130,6 +133,36 @@ export function createCli() {
         const repo = opts.repo ?? detectRepo(cwd);
         const branch = `aidev/issue-${opts.issue}`;
 
+        // Fetch issue for confirmation
+        const ghForConfirm = createGitHubAdapter(repo);
+        const issue = await ghForConfirm.getIssue(opts.issue);
+
+        if (!opts.yes) {
+          if (process.stdin.isTTY) {
+            const truncated = issue.body && issue.body.length > 500
+              ? issue.body.slice(0, 500) + "..."
+              : issue.body;
+            console.log(`\n--- Issue #${issue.number}: ${issue.title} ---`);
+            console.log(`Author: ${issue.author}`);
+            if (truncated) console.log(`\n${truncated}\n`);
+
+            const confirmed = await new Promise<boolean>((resolve) => {
+              const rl = createInterface({ input: process.stdin, output: process.stdout });
+              rl.question("Proceed with this issue? (y/N) ", (answer) => {
+                rl.close();
+                resolve(answer.toLowerCase() === "y");
+              });
+            });
+
+            if (!confirmed) {
+              logger.info("Cancelled by user");
+              process.exit(0);
+            }
+          } else {
+            logger.info("Non-interactive mode: skipping confirmation (use --yes to suppress this message)");
+          }
+        }
+
         ctx = {
           runId,
           issueNumber: opts.issue,
@@ -142,6 +175,7 @@ export function createCli() {
           dryRun: opts.dryRun,
           autoMerge: opts.autoMerge,
           issueLabels: [],
+          skipAuthorCheck: opts.allowForeignIssues,
         };
       }
 
@@ -187,6 +221,7 @@ export function createCli() {
 
       logger.info("Watching for issues", { label: opts.label, repo });
 
+      const authenticatedUser = await github.getAuthenticatedUser();
       const processedIssues = new Set<number>();
 
       const poll = async () => {
@@ -194,6 +229,16 @@ export function createCli() {
         for (const issue of issues) {
           if (processedIssues.has(issue.number)) continue;
           processedIssues.add(issue.number);
+
+          if (issue.author !== authenticatedUser) {
+            logger.warn("Skipping foreign issue", {
+              number: issue.number,
+              author: issue.author,
+              authenticatedUser,
+            });
+            continue;
+          }
+
           logger.info("Found new issue", {
             number: issue.number,
             title: issue.title,

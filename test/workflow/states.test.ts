@@ -42,7 +42,9 @@ function makeDeps(overrides?: {
       title: "Test issue",
       body: "Test body",
       labels: [],
+      author: "testuser",
     })),
+    getAuthenticatedUser: vi.fn(async () => "testuser"),
     commentOnIssue: vi.fn(async () => {}),
     createPr: vi.fn(async () => 42),
     getCiStatus: vi.fn(async () => "passing" as const),
@@ -71,6 +73,7 @@ describe("init handler", () => {
           title: "Test",
           body: "",
           labels: ["auto-merge", "enhancement"],
+          author: "testuser",
         })),
       },
     });
@@ -91,6 +94,69 @@ describe("init handler", () => {
     const result = await handlers.init!(ctx);
 
     expect(result.ctx.issueLabels).toEqual([]);
+  });
+
+  it("rejects issue when author does not match authenticated user", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "",
+          labels: [],
+          author: "foreignuser",
+        })),
+        getAuthenticatedUser: vi.fn(async () => "myuser"),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    await expect(handlers.init!(ctx)).rejects.toThrow("foreignuser");
+  });
+
+  it("allows issue when author matches authenticated user", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "",
+          labels: [],
+          author: "myuser",
+        })),
+        getAuthenticatedUser: vi.fn(async () => "myuser"),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.nextState).toBe("planning");
+  });
+
+  it("skips author check when skipAuthorCheck is true", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "",
+          labels: [],
+          author: "foreignuser",
+        })),
+        getAuthenticatedUser: vi.fn(async () => "myuser"),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ skipAuthorCheck: true });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.nextState).toBe("planning");
+    // getAuthenticatedUser should not be called when check is skipped
+    expect(deps.github.getAuthenticatedUser).not.toHaveBeenCalled();
   });
 });
 

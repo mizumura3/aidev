@@ -17,6 +17,7 @@ vi.mock("../src/adapters/github.js", () => ({
   createGitHubAdapter: vi.fn(() => ({
     listIssuesByLabel: vi.fn(async () => []),
     getIssue: vi.fn(),
+    getAuthenticatedUser: vi.fn(async () => "testuser"),
     commentOnIssue: vi.fn(),
     createPr: vi.fn(),
     getCiStatus: vi.fn(),
@@ -59,9 +60,10 @@ describe("watch command", () => {
   it("calls runWorkflow directly instead of execaCommand for each new issue", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"] },
+        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -143,9 +145,10 @@ describe("watch command", () => {
   it("logs errors from runWorkflow without crashing the watcher", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 99, title: "Failing issue", body: "body", labels: ["ai:run"] },
+        { number: 99, title: "Failing issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -188,10 +191,11 @@ describe("watch command", () => {
   it("creates unique runIds for each issue", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 10, title: "Issue 10", body: "body", labels: ["ai:run"] },
-        { number: 20, title: "Issue 20", body: "body", labels: ["ai:run"] },
+        { number: 10, title: "Issue 10", body: "body", labels: ["ai:run"], author: "testuser" },
+        { number: 20, title: "Issue 20", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -243,10 +247,11 @@ describe("watch command", () => {
   it("passes a unique worktree cwd to each issue's runWorkflow", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 10, title: "Issue 10", body: "body", labels: ["ai:run"] },
-        { number: 20, title: "Issue 20", body: "body", labels: ["ai:run"] },
+        { number: 10, title: "Issue 10", body: "body", labels: ["ai:run"], author: "testuser" },
+        { number: 20, title: "Issue 20", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -297,9 +302,10 @@ describe("watch command", () => {
   it("cleans up worktree after successful runWorkflow", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"] },
+        { number: 42, title: "Test issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -343,9 +349,10 @@ describe("watch command", () => {
   it("cleans up worktree after failed runWorkflow", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 99, title: "Failing issue", body: "body", labels: ["ai:run"] },
+        { number: 99, title: "Failing issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -387,9 +394,10 @@ describe("watch command", () => {
   it("does not crash when worktree creation fails", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
-        { number: 55, title: "WT fail issue", body: "body", labels: ["ai:run"] },
+        { number: 55, title: "WT fail issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
       getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
       commentOnIssue: vi.fn(),
       createPr: vi.fn(),
       getCiStatus: vi.fn(),
@@ -431,5 +439,152 @@ describe("watch command", () => {
 
     // runWorkflow should NOT have been called since worktree creation failed
     expect(mockRunWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("skips foreign issues with warning log in watch mode", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 42, title: "Foreign issue", body: "body", labels: ["ai:run"], author: "foreignuser" },
+        { number: 43, title: "Own issue", body: "body", labels: ["ai:run"], author: "myuser" },
+      ]),
+      getIssue: vi.fn(),
+      getAuthenticatedUser: vi.fn(async () => "myuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Only the own issue should be processed
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.issueNumber).toBe(43);
+  });
+});
+
+describe("run command", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sets skipAuthorCheck when --allow-foreign-issues is used", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+      "--allow-foreign-issues",
+    ]);
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.skipAuthorCheck).toBe(true);
+  });
+
+  it("skips confirmation with --yes flag", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+    ]);
+
+    // Workflow should have been called (confirmation skipped)
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,12 +21,13 @@ describe("GitHubAdapter", () => {
   });
 
   describe("getIssue", () => {
-    it("fetches issue and parses JSON", async () => {
+    it("fetches issue with author and parses JSON", async () => {
       const issueJson = JSON.stringify({
         number: 1,
         title: "Bug",
         body: "Fix it",
         labels: [{ name: "bug" }],
+        author: { login: "testuser" },
       });
       mockExeca.mockResolvedValue({ stdout: issueJson } as any);
 
@@ -39,13 +40,14 @@ describe("GitHubAdapter", () => {
         "--repo",
         repo,
         "--json",
-        "number,title,body,labels",
+        "number,title,body,labels,author",
       ]);
       expect(issue).toEqual({
         number: 1,
         title: "Bug",
         body: "Fix it",
         labels: ["bug"],
+        author: "testuser",
       });
     });
   });
@@ -236,17 +238,46 @@ describe("GitHubAdapter", () => {
   });
 
   describe("listIssuesByLabel", () => {
-    it("returns issues with label", async () => {
+    it("returns issues with label and author", async () => {
       mockExeca.mockResolvedValue({
         stdout: JSON.stringify([
-          { number: 1, title: "A", body: "a", labels: [{ name: "ai:run" }] },
-          { number: 2, title: "B", body: "b", labels: [{ name: "ai:run" }] },
+          { number: 1, title: "A", body: "a", labels: [{ name: "ai:run" }], author: { login: "user1" } },
+          { number: 2, title: "B", body: "b", labels: [{ name: "ai:run" }], author: { login: "user2" } },
         ]),
       } as any);
 
       const issues = await gh.listIssuesByLabel("ai:run");
+
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "issue",
+        "list",
+        "--repo",
+        repo,
+        "--label",
+        "ai:run",
+        "--json",
+        "number,title,body,labels,author",
+      ]);
       expect(issues).toHaveLength(2);
       expect(issues[0]!.number).toBe(1);
+      expect(issues[0]!.author).toBe("user1");
+      expect(issues[1]!.author).toBe("user2");
+    });
+  });
+
+  describe("getAuthenticatedUser", () => {
+    it("returns the authenticated user login", async () => {
+      mockExeca.mockResolvedValue({ stdout: "myuser\n" } as any);
+
+      const user = await gh.getAuthenticatedUser();
+
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "api",
+        "user",
+        "--jq",
+        ".login",
+      ]);
+      expect(user).toBe("myuser");
     });
   });
 });

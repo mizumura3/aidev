@@ -37,6 +37,16 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       number: issue.number,
       title: issue.title,
     });
+
+    if (!ctx.skipAuthorCheck) {
+      const authenticatedUser = await github.getAuthenticatedUser();
+      if (issue.author !== authenticatedUser) {
+        throw new Error(
+          `Issue #${issue.number} was created by '${issue.author}', not by the authenticated user '${authenticatedUser}'. Use --allow-foreign-issues to bypass this check.`
+        );
+      }
+    }
+
     await git.createBranch(ctx.branch, ctx.cwd);
     logger.info("Created branch", { branch: ctx.branch });
     return transition(ctx, "planning", { issueLabels: issue.labels });
