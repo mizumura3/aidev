@@ -8,7 +8,10 @@ import { runReviewer } from "../agents/reviewer.js";
 import { runFixer } from "../agents/fixer.js";
 import type { Logger } from "../util/logger.js";
 import type { DocumenterInput } from "../agents/documenter.js";
-import { parseIssueConfig } from "../config/issue-config.js";
+import { parseIssueConfig, type ResolvedConfig } from "../config/issue-config.js";
+import type { IssueConfig } from "../config/issue-config.js";
+import { mergeConfigs } from "../config/merge-config.js";
+import { buildResolvedConfigBlock, upsertAidevBlock } from "../config/serialize-config.js";
 import type { SkippableState } from "../types.js";
 
 export interface Deps {
@@ -16,6 +19,7 @@ export interface Deps {
   github: GitHubAdapter;
   logger: Logger;
   runDocumenter: (input: DocumenterInput, logger: Logger) => Promise<void>;
+  loadRepoConfig: (cwd: string) => Promise<Partial<IssueConfig>>;
 }
 
 function transition(
@@ -31,7 +35,7 @@ function shouldAutoMerge(ctx: RunContext): boolean {
 }
 
 export function createStateHandlers(deps: Deps): StateHandlerMap {
-  const { git, github, logger, runDocumenter } = deps;
+  const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
 
   const init: StateHandler = async (ctx) => {
     const issue = await github.getIssue(ctx.issueNumber);
@@ -49,35 +53,47 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       }
     }
 
+    // Load repo-level config (.aidev.yml)
+    const repoConfig = await loadRepoConfig(ctx.cwd);
+    if (Object.keys(repoConfig).length > 0) {
+      logger.info("Loaded repo config", { repoConfig });
+    }
+
     // Parse issue config from body
     const issueConfig = parseIssueConfig(issue.body);
+    if (Object.keys(issueConfig).length > 0) {
+      logger.info("Parsed issue config", { issueConfig });
+    }
+
+    // Merge: repo < issue, excluding CLI-explicit fields
+    const cliExplicit = ctx._cliExplicit ?? new Set<string>();
+    const merged = mergeConfigs(repoConfig, issueConfig, cliExplicit);
+
     const patch: Partial<RunContext> = {
       issueLabels: issue.labels,
       issueTitle: issue.title,
     };
 
-    // Merge issue config into ctx (only for fields not explicitly set via CLI)
-    if (issueConfig.maxFixAttempts !== undefined && !ctx._cliExplicit?.has("maxFixAttempts")) {
-      patch.maxFixAttempts = issueConfig.maxFixAttempts;
-    }
-    if (issueConfig.autoMerge !== undefined && !ctx._cliExplicit?.has("autoMerge")) {
-      patch.autoMerge = issueConfig.autoMerge;
-    }
-    if (issueConfig.dryRun !== undefined && !ctx._cliExplicit?.has("dryRun")) {
-      patch.dryRun = issueConfig.dryRun;
-    }
-    if (issueConfig.base !== undefined && !ctx._cliExplicit?.has("base")) {
-      patch.base = issueConfig.base;
-    }
-    if (issueConfig.skip) {
-      patch.skipStates = issueConfig.skip as SkippableState[];
-    }
-
-    if (Object.keys(issueConfig).length > 0) {
-      logger.info("Applied issue config", { issueConfig });
-    }
+    if (merged.maxFixAttempts !== undefined) patch.maxFixAttempts = merged.maxFixAttempts;
+    if (merged.autoMerge !== undefined) patch.autoMerge = merged.autoMerge;
+    if (merged.dryRun !== undefined) patch.dryRun = merged.dryRun;
+    if (merged.base !== undefined) patch.base = merged.base;
+    if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
 
     const mergedCtx = { ...ctx, ...patch };
+
+    // Build resolved config and write back to issue body
+    const resolvedConfig: ResolvedConfig = {
+      maxFixAttempts: mergedCtx.maxFixAttempts,
+      autoMerge: mergedCtx.autoMerge,
+      dryRun: mergedCtx.dryRun,
+      base: mergedCtx.base,
+      skip: (mergedCtx.skipStates ?? []) as SkippableState[],
+    };
+    const configBlock = buildResolvedConfigBlock(resolvedConfig);
+    const updatedBody = upsertAidevBlock(issue.body, configBlock);
+    await github.updateIssueBody(issue.number, updatedBody);
+
     await git.createBranch(mergedCtx.branch, mergedCtx.base, mergedCtx.cwd);
     logger.info("Created branch", { branch: mergedCtx.branch });
     return transition(mergedCtx, "planning");

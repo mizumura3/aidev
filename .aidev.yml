@@ -1,0 +1,12 @@
+# aidev repo-level config
+# Per-issue config (```aidev block in issue body) overrides these.
+# CLI flags override both.
+
+maxFixAttempts: 3
+autoMerge: false
+dryRun: false
+base: main
+# skip:
+#   - reviewing
+#   - watching_ci
+#   - documenter

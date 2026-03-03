@@ -280,4 +280,20 @@ describe("GitHubAdapter", () => {
       expect(user).toBe("myuser");
     });
   });
+
+  describe("updateIssueBody", () => {
+    it("calls gh issue edit with new body", async () => {
+      mockExeca.mockResolvedValue({ stdout: "" } as any);
+      await gh.updateIssueBody(7, "Updated body content");
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "issue",
+        "edit",
+        "7",
+        "--repo",
+        repo,
+        "--body",
+        "Updated body content",
+      ]);
+    });
+  });
 });

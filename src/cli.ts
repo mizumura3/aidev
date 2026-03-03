@@ -10,6 +10,8 @@ import { runWorkflow, type Persistence } from "./workflow/engine.js";
 import { createStateHandlers } from "./workflow/states.js";
 import { runDocumenter } from "./agents/documenter.js";
 import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
+import { loadRepoConfig } from "./config/repo-config.js";
+import { writeAidevYml } from "./config/init.js";
 import type { RunContext } from "./types.js";
 
 function createFilePersistence(baseDir: string): Persistence {
@@ -201,7 +203,7 @@ export function createCli() {
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
-      const handlers = createStateHandlers({ git, github, logger, runDocumenter });
+      const handlers = createStateHandlers({ git, github, logger, runDocumenter, loadRepoConfig });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
@@ -257,7 +259,7 @@ export function createCli() {
       const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
       const persistence = createFilePersistence(baseDir);
-      const handlers = createStateHandlers({ git, github, logger, runDocumenter });
+      const handlers = createStateHandlers({ git, github, logger, runDocumenter, loadRepoConfig });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
@@ -352,6 +354,16 @@ export function createCli() {
 
       await poll();
       setInterval(poll, opts.interval * 1000);
+    });
+
+  program
+    .command("init")
+    .description("Generate a .aidev.yml config file in the target directory")
+    .option("--cwd <path>", "Target directory", process.cwd())
+    .option("--force", "Overwrite existing .aidev.yml", false)
+    .action(async (opts) => {
+      await writeAidevYml(opts.cwd, opts.force);
+      console.log(`Created .aidev.yml in ${opts.cwd}`);
     });
 
   program

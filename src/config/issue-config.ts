@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { SkippableStateSchema } from "../types.js";
+import type { SkippableState } from "../types.js";
 
-const SkippableStateSchema = z.enum(["reviewing", "watching_ci", "documenter"]);
-export type SkippableState = z.infer<typeof SkippableStateSchema>;
+export type { SkippableState } from "../types.js";
 
 const IssueConfigSchema = z
   .object({
@@ -14,6 +15,14 @@ const IssueConfigSchema = z
   .strict();
 
 export type IssueConfig = z.infer<typeof IssueConfigSchema>;
+
+export interface ResolvedConfig {
+  maxFixAttempts: number;
+  autoMerge: boolean;
+  dryRun: boolean;
+  base: string;
+  skip: SkippableState[];
+}
 
 /**
  * Extract the content inside the first ```aidev ... ``` code fence.
@@ -29,6 +38,7 @@ function extractAidevBlock(body: string): string | null {
  *   key: value
  *   key:
  *     - item
+ *   # comment lines (skipped)
  */
 function parseYamlLike(block: string): Record<string, string | string[]> {
   const result: Record<string, string | string[]> = {};
@@ -39,6 +49,7 @@ function parseYamlLike(block: string): Record<string, string | string[]> {
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) continue;
+    if (line.startsWith("#")) continue;
 
     const listItem = line.match(/^-\s+(.+)$/);
     if (listItem && currentKey) {
@@ -87,10 +98,11 @@ function toNumber(value: string): number | undefined {
   return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-export function parseIssueConfig(body: string): Partial<IssueConfig> {
-  const block = extractAidevBlock(body);
-  if (!block) return {};
-
+/**
+ * Parse a YAML-like config block string into a partial IssueConfig.
+ * Shared by issue body parser and .aidev.yml loader.
+ */
+export function parseConfigBlock(block: string): Partial<IssueConfig> {
   const raw = parseYamlLike(block);
   const obj: Record<string, unknown> = {};
 
@@ -121,4 +133,10 @@ export function parseIssueConfig(body: string): Partial<IssueConfig> {
   }
 
   return obj;
+}
+
+export function parseIssueConfig(body: string): Partial<IssueConfig> {
+  const block = extractAidevBlock(body);
+  if (!block) return {};
+  return parseConfigBlock(block);
 }

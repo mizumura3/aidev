@@ -27,6 +27,7 @@ export interface GitHubAdapter {
   closeIssue(number: number): Promise<void>;
   listIssuesByLabel(label: string): Promise<Issue[]>;
   getCheckRunLogs(branch: string): Promise<string>;
+  updateIssueBody(number: number, body: string): Promise<void>;
 }
 
 export function createGitHubAdapter(repo: string): GitHubAdapter {
@@ -163,6 +164,18 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
         return lines.slice(-200).join("\n");
       }
       return logOut;
+    },
+
+    async updateIssueBody(number, body) {
+      await execa("gh", [
+        "issue",
+        "edit",
+        String(number),
+        "--repo",
+        repo,
+        "--body",
+        body,
+      ]);
     },
 
     async listIssuesByLabel(label) {

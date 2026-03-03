@@ -37,6 +37,7 @@ function makeDeps(overrides?: {
   git?: Partial<GitAdapter>;
   github?: Partial<GitHubAdapter>;
   runDocumenter?: Deps["runDocumenter"];
+  loadRepoConfig?: Deps["loadRepoConfig"];
 }): Deps {
   const git: GitAdapter = {
     createBranch: vi.fn(async () => {}),
@@ -63,6 +64,7 @@ function makeDeps(overrides?: {
     closeIssue: vi.fn(async () => {}),
     listIssuesByLabel: vi.fn(async () => []),
     getCheckRunLogs: vi.fn(async () => ""),
+    updateIssueBody: vi.fn(async () => {}),
     ...overrides?.github,
   };
   const logger: Logger = {
@@ -72,7 +74,8 @@ function makeDeps(overrides?: {
     error: vi.fn(),
   };
   const runDocumenter = overrides?.runDocumenter ?? vi.fn(async () => {});
-  return { git, github, logger, runDocumenter };
+  const loadRepoConfig = overrides?.loadRepoConfig ?? vi.fn(async () => ({}));
+  return { git, github, logger, runDocumenter, loadRepoConfig };
 }
 
 describe("init handler", () => {
@@ -286,6 +289,103 @@ describe("init handler", () => {
     expect(result.nextState).toBe("planning");
     // getAuthenticatedUser should not be called when check is skipped
     expect(deps.github.getAuthenticatedUser).not.toHaveBeenCalled();
+  });
+
+  it("applies .aidev.yml repo config to ctx", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ base: "develop", autoMerge: true })),
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.base).toBe("develop");
+    expect(result.ctx.autoMerge).toBe(true);
+  });
+
+  it("issue config overrides repo config", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ base: "develop", maxFixAttempts: 10 })),
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nbase: release/1.0\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.base).toBe("release/1.0");
+    expect(result.ctx.maxFixAttempts).toBe(10);
+  });
+
+  it("CLI flags override both repo and issue config", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ base: "develop" })),
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nbase: release/1.0\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ base: "cli-branch", _cliExplicit: new Set(["base"]) });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.base).toBe("cli-branch");
+  });
+
+  it("writes resolved config back to issue body", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    await handlers.init!(ctx);
+
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("```aidev"),
+    );
+  });
+
+  it("writes resolved config even with default options only", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 5,
+          title: "Test",
+          body: "Simple issue body",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ issueNumber: 5 });
+
+    await handlers.init!(ctx);
+
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("```aidev"),
+    );
+    // Original body should be preserved
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("Simple issue body"),
+    );
   });
 });
 
