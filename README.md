@@ -22,7 +22,7 @@ bun run build
 ### `run` — Issue を処理する
 
 ```bash
-node dist/index.js run --issue <number> --repo <owner/name> --cwd <path>
+bun run aidev run --issue <number> --repo <owner/name> --cwd <path>
 ```
 
 | オプション | 説明 | デフォルト |
@@ -88,7 +88,7 @@ skip:
 ### `watch` — ラベル付き Issue を監視して自動処理
 
 ```bash
-node dist/index.js watch --repo <owner/name> --cwd <path>
+bun run aidev watch --repo <owner/name> --cwd <path>
 ```
 
 指定ラベル（デフォルト: `ai:run`）の Issue を定期的にポーリングし、見つかったら自動で開発ループを実行する。Issue に `auto-merge` ラベルがあれば CI 通過後に自動マージされる。
@@ -109,7 +109,7 @@ node dist/index.js watch --repo <owner/name> --cwd <path>
 ### `status` — 実行状態を確認
 
 ```bash
-node dist/index.js status <run-id>
+bun run aidev status <run-id>
 ```
 
 ## ワークフロー

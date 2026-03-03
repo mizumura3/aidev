@@ -6,6 +6,7 @@
     "aidev": "./dist/index.js"
   },
   "scripts": {
+    "aidev": "node dist/index.js",
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
