@@ -112,6 +112,12 @@ node dist/index.js watch --repo <owner/name> --cwd <path>
 node dist/index.js status <run-id>
 ```
 
+デフォルトでは人間が読みやすい整形済みテキストで出力される。`--json` を指定すると生の JSON を出力する。
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--json` | JSON 形式で出力 | `false` |
+
 ## ワークフロー
 
 ```

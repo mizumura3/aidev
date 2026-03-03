@@ -12,6 +12,7 @@ import { runDocumenter } from "./agents/documenter.js";
 import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
+import { formatStatus } from "./util/format-status.js";
 import type { RunContext } from "./types.js";
 
 function createFilePersistence(baseDir: string): Persistence {
@@ -370,7 +371,8 @@ export function createCli() {
     .command("status")
     .description("Show status of a run")
     .argument("<run-id>", "Run ID")
-    .action(async (runId) => {
+    .option("--json", "Output raw JSON", false)
+    .action(async (runId, opts) => {
       const baseDir = join(
         process.env.HOME ?? "~",
         ".devloop",
@@ -382,7 +384,11 @@ export function createCli() {
         console.error(`Run not found: ${runId}`);
         process.exit(1);
       }
-      console.log(JSON.stringify(ctx, null, 2));
+      if (opts.json) {
+        console.log(JSON.stringify(ctx, null, 2));
+      } else {
+        console.log(formatStatus(ctx));
+      }
     });
 
   return program;
