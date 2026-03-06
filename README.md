@@ -32,15 +32,17 @@ bun run aidev init [--cwd <path>] [--force]
 | `--cwd <path>` | 生成先ディレクトリ | カレントディレクトリ |
 | `--force` | 既存ファイルを上書き | `false` |
 
-### `run` — Issue を処理する
+### `run` — Issue または PR を処理する
 
 ```bash
 bun run aidev run --issue <number> --repo <owner/name> --cwd <path>
+bun run aidev run --pr <number> --repo <owner/name> --cwd <path>
 ```
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
-| `--issue <number>` | GitHub Issue 番号（必須） | — |
+| `--issue <number>` | GitHub Issue 番号 | — |
+| `--pr <number>` | GitHub Pull Request 番号 | — |
 | `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
 | `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
 | `--auto-merge` | CI 通過後に自動マージ | `false` |
@@ -52,13 +54,24 @@ bun run aidev run --issue <number> --repo <owner/name> --cwd <path>
 | `-y, --yes` | 実行前の確認プロンプトをスキップ | `false` |
 | `--allow-foreign-issues` | 他ユーザーが作成した Issue の処理を許可 | `false` |
 
+`--issue` と `--pr` は排他的で、**どちらか一方を必ず指定**する。
+
 #### 実行確認
 
-`run` コマンドは実行前に Issue の内容（タイトル・作成者・本文）を表示し、確認プロンプトを表示する。`-y` / `--yes` で確認をスキップできる。非対話環境（TTY でない場合）では確認は自動スキップされる。
+`run` コマンドは実行前に対象の Issue または PR の内容（タイトル・作成者・本文）を表示し、確認プロンプトを表示する。`-y` / `--yes` で確認をスキップできる。非対話環境（TTY でない場合）では確認は自動スキップされる。
 
 #### プロンプトインジェクション対策
 
-デフォルトでは、Issue の作成者が認証ユーザー自身でない場合、`init` フェーズでエラーとなる。他ユーザーの Issue を処理する場合は `--allow-foreign-issues` を指定する。
+デフォルトでは、Issue / PR の作成者が認証ユーザー自身でない場合、`init` フェーズでエラーとなる。他ユーザーの Issue / PR を処理する場合は `--allow-foreign-issues` を指定する。
+
+#### PR モード
+
+`--pr <number>` を指定すると、既存の PR を直接改善対象として扱う。
+
+- PR の `head` ブランチを checkout してそのブランチに push する
+- 新しい PR は作らない
+- `--auto-merge` を付けた場合は、既存 PR をそのまま merge する
+- Issue は close しない
 
 #### 自動マージ
 

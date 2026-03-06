@@ -4,7 +4,7 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { createGitAdapter } from "./adapters/git.js";
-import { createGitHubAdapter, type Issue } from "./adapters/github.js";
+import { createGitHubAdapter, type Issue, type PullRequest } from "./adapters/github.js";
 import { createLogger } from "./util/logger.js";
 import { runWorkflow, type Persistence } from "./workflow/engine.js";
 import { createStateHandlers } from "./workflow/states.js";
@@ -74,6 +74,26 @@ function createFilePersistence(baseDir: string): Persistence {
       }
       return null;
     },
+    async findLatestByPr(prNumber) {
+      const { readdir } = await import("node:fs/promises");
+      let dirs: string[];
+      try {
+        dirs = await readdir(baseDir);
+      } catch {
+        return null;
+      }
+      dirs.sort().reverse();
+      for (const dir of dirs) {
+        try {
+          const data = await readFile(join(baseDir, dir, "state.json"), "utf-8");
+          const ctx = JSON.parse(data) as RunContext;
+          if (ctx.prNumber === prNumber && ctx.targetKind === "pr") return ctx;
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    },
   };
 }
 
@@ -89,8 +109,9 @@ export function createCli() {
 
   const runCmd = program
     .command("run")
-    .description("Run the full dev loop for an issue")
-    .requiredOption("--issue <number>", "GitHub issue number", parseInt)
+    .description("Run the full dev loop for an issue or pull request")
+    .option("--issue <number>", "GitHub issue number", parseInt)
+    .option("--pr <number>", "GitHub pull request number", parseInt)
     .option("--cwd <path>", "Working directory", process.cwd())
     .option("--max-fix-attempts <n>", "Max CI fix attempts", parseInt, 3)
     .option("--dry-run", "Skip push/PR/merge", false)
@@ -98,9 +119,9 @@ export function createCli() {
     .option("--base <branch>", "Base branch or tag to create branch from", "main")
     .option("--repo <owner/name>", "GitHub repo (owner/name)")
     .option("--claude-path <path>", "Path to native Claude Code executable")
-    .option("--resume", "Resume the latest run for this issue")
+    .option("--resume", "Resume the latest run for this target")
     .option("-y, --yes", "Skip interactive confirmation", false)
-    .option("--allow-foreign-issues", "Allow processing issues from other users", false);
+    .option("--allow-foreign-issues", "Allow processing issues or PRs from other users", false);
 
   runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
@@ -111,13 +132,23 @@ export function createCli() {
         "runs"
       );
       const persistence = createFilePersistence(baseDir);
+      const targetKind = opts.pr != null ? "pr" : "issue";
+      const targetNumber = targetKind === "pr" ? opts.pr : opts.issue;
+
+      if ((opts.issue == null && opts.pr == null) || (opts.issue != null && opts.pr != null)) {
+        logger.error("Specify exactly one of --issue or --pr");
+        process.exit(1);
+      }
 
       let ctx: RunContext;
 
       if (opts.resume) {
-        const saved = await persistence.findLatestByIssue!(opts.issue);
+        const saved =
+          targetKind === "pr"
+            ? await persistence.findLatestByPr?.(opts.pr)
+            : await persistence.findLatestByIssue?.(opts.issue);
         if (!saved) {
-          logger.error("No previous run found for issue", { issue: opts.issue });
+          logger.error("No previous run found for target", { targetKind, targetNumber });
           process.exit(1);
         }
         // Override flags for resumed run
@@ -131,24 +162,34 @@ export function createCli() {
         if (saved.state === "done" && saved.dryRun) {
           ctx.state = "creating_pr";
         }
-        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, issue: opts.issue });
+        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, targetKind, targetNumber });
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
         const cwd = opts.cwd;
         const repo = opts.repo ?? detectRepo(cwd);
-        const branch = `aidev/issue-${opts.issue}`;
-
-        // Fetch issue for confirmation
         const ghForConfirm = createGitHubAdapter(repo);
-        const issue = await ghForConfirm.getIssue(opts.issue);
+
+        let issue: Issue | undefined;
+        let pr: PullRequest | undefined;
+        let branch: string;
+
+        if (targetKind === "pr") {
+          pr = await ghForConfirm.getPr(opts.pr);
+          branch = pr.headRefName;
+        } else {
+          issue = await ghForConfirm.getIssue(opts.issue);
+          branch = `aidev/issue-${opts.issue}`;
+        }
+
+        const target = targetKind === "pr" ? pr! : issue!;
 
         if (!opts.yes) {
           if (process.stdin.isTTY) {
-            const truncated = issue.body && issue.body.length > 500
-              ? issue.body.slice(0, 500) + "..."
-              : issue.body;
-            console.log(`\n--- Issue #${issue.number}: ${issue.title} ---`);
-            console.log(`Author: ${issue.author}`);
+            const truncated = target.body && target.body.length > 500
+              ? target.body.slice(0, 500) + "..."
+              : target.body;
+            console.log(`\n--- ${targetKind.toUpperCase()} #${target.number}: ${target.title} ---`);
+            console.log(`Author: ${target.author}`);
             if (truncated) console.log(`\n${truncated}\n`);
 
             const confirmed = await new Promise<boolean>((resolve) => {
@@ -184,11 +225,14 @@ export function createCli() {
 
         ctx = {
           runId,
+          targetKind,
           issueNumber: opts.issue,
+          prNumber: opts.pr,
           repo,
           cwd,
           state: "init",
           branch,
+          headBranch: pr?.headRefName,
           base: opts.base,
           maxFixAttempts: opts.maxFixAttempts,
           fixAttempts: 0,
@@ -211,7 +255,7 @@ export function createCli() {
         channel: process.env.AIDEV_SLACK_CHANNEL,
       });
 
-      logger.info("Starting devloop", { runId: ctx.runId, issue: opts.issue, repo: ctx.repo });
+      logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
       const workflowStart = performance.now();
 
       const result = await runWorkflow(ctx, handlers, persistence, {
@@ -221,7 +265,8 @@ export function createCli() {
         onComplete: async (finalCtx) => {
           const elapsedMs = Math.round(performance.now() - workflowStart);
           const message = formatSlackMessage({
-            issueNumber: finalCtx.issueNumber,
+            targetKind: finalCtx.targetKind,
+            targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
             issueTitle: finalCtx.issueTitle,
             repo: finalCtx.repo,
             finalState: finalCtx.state as "done" | "failed",
@@ -300,6 +345,7 @@ export function createCli() {
             try {
               const ctx: RunContext = {
                 runId,
+                targetKind: "issue",
                 issueNumber: issue.number,
                 repo,
                 cwd: worktreePath,
@@ -323,7 +369,8 @@ export function createCli() {
                 onComplete: async (finalCtx) => {
                   const elapsedMs = Math.round(performance.now() - issueStart);
                   const message = formatSlackMessage({
-                    issueNumber: finalCtx.issueNumber,
+                    targetKind: finalCtx.targetKind,
+                    targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
                     issueTitle: finalCtx.issueTitle,
                     repo: finalCtx.repo,
                     finalState: finalCtx.state as "done" | "failed",

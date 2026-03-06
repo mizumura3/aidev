@@ -143,6 +143,7 @@ describe("FixSchema", () => {
 describe("RunContextSchema", () => {
   const validContext: RunContext = {
     runId: "run-123",
+    targetKind: "issue",
     issueNumber: 42,
     repo: "mizumura3/inko",
     cwd: "/tmp/inko",
@@ -176,6 +177,31 @@ describe("RunContextSchema", () => {
       prNumber: 10,
     };
     expect(RunContextSchema.parse(ctx)).toEqual(ctx);
+  });
+
+  it("accepts valid PR-mode context without issueNumber", () => {
+    const parsed = RunContextSchema.parse({
+      runId: "run-pr-5",
+      targetKind: "pr",
+      prNumber: 5,
+      repo: "mizumura3/inko",
+      cwd: "/tmp/inko",
+      state: "init",
+      branch: "feature/pr-mode",
+      headBranch: "feature/pr-mode",
+      base: "main",
+      maxFixAttempts: 3,
+      fixAttempts: 0,
+      dryRun: false,
+      autoMerge: false,
+      issueLabels: [],
+      skipAuthorCheck: false,
+      skipStates: [],
+    });
+
+    expect(parsed.targetKind).toBe("pr");
+    expect(parsed.prNumber).toBe(5);
+    expect(parsed.headBranch).toBe("feature/pr-mode");
   });
 
   it("defaults maxFixAttempts to 3", () => {
@@ -224,7 +250,7 @@ describe("RunContextSchema", () => {
     expect(parsed.base).toBe("release/1.3");
   });
 
-  it("rejects context without issueNumber", () => {
+  it("rejects issue-mode context without issueNumber", () => {
     const { issueNumber, ...rest } = validContext;
     expect(() => RunContextSchema.parse(rest)).toThrow();
   });

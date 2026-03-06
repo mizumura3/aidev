@@ -8,6 +8,15 @@ export interface Issue {
   author: string;
 }
 
+export interface PullRequest {
+  number: number;
+  title: string;
+  body: string;
+  baseRefName: string;
+  headRefName: string;
+  author: string;
+}
+
 export interface CreatePrOpts {
   title: string;
   body: string;
@@ -19,8 +28,10 @@ export type CiStatus = "passing" | "failing" | "pending" | "no_checks";
 
 export interface GitHubAdapter {
   getIssue(number: number): Promise<Issue>;
+  getPr(number: number): Promise<PullRequest>;
   getAuthenticatedUser(): Promise<string>;
   commentOnIssue(number: number, body: string): Promise<void>;
+  commentOnPr(number: number, body: string): Promise<void>;
   createPr(opts: CreatePrOpts): Promise<number>;
   getCiStatus(branch: string): Promise<CiStatus>;
   mergePr(number: number): Promise<void>;
@@ -52,6 +63,27 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
       };
     },
 
+    async getPr(number) {
+      const { stdout } = await execa("gh", [
+        "pr",
+        "view",
+        String(number),
+        "--repo",
+        repo,
+        "--json",
+        "number,title,body,baseRefName,headRefName,author",
+      ]);
+      const raw = JSON.parse(stdout);
+      return {
+        number: raw.number,
+        title: raw.title,
+        body: raw.body,
+        baseRefName: raw.baseRefName,
+        headRefName: raw.headRefName,
+        author: raw.author.login,
+      };
+    },
+
     async getAuthenticatedUser() {
       const { stdout } = await execa("gh", [
         "api",
@@ -65,6 +97,18 @@ export function createGitHubAdapter(repo: string): GitHubAdapter {
     async commentOnIssue(number, body) {
       await execa("gh", [
         "issue",
+        "comment",
+        String(number),
+        "--repo",
+        repo,
+        "--body",
+        body,
+      ]);
+    },
+
+    async commentOnPr(number, body) {
+      await execa("gh", [
+        "pr",
         "comment",
         String(number),
         "--repo",

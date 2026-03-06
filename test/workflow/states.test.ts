@@ -8,6 +8,18 @@ vi.mock("../../src/agents/reviewer.js", () => ({
   })),
 }));
 
+vi.mock("../../src/agents/planner.js", () => ({
+  runPlanner: vi.fn(async () => ({
+    summary: "Plan for PR mode",
+    steps: ["Inspect", "Implement"],
+    filesToTouch: ["src/cli.ts"],
+    tests: ["test/workflow/states.test.ts"],
+    risks: [],
+    acceptanceCriteria: ["PR mode works"],
+    investigation: "- Found the relevant PR flow",
+  })),
+}));
+
 import { createStateHandlers, type Deps } from "../../src/workflow/states.js";
 import type { RunContext } from "../../src/types.js";
 import type { GitAdapter } from "../../src/adapters/git.js";
@@ -17,6 +29,7 @@ import type { Logger } from "../../src/util/logger.js";
 function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
   return {
     runId: "test-run",
+    targetKind: "issue",
     issueNumber: 1,
     repo: "owner/repo",
     cwd: "/tmp/repo",
@@ -56,8 +69,17 @@ function makeDeps(overrides?: {
       labels: [],
       author: "testuser",
     })),
+    getPr: vi.fn(async () => ({
+      number: 5,
+      title: "Test PR",
+      body: "PR body",
+      baseRefName: "main",
+      headRefName: "feature/pr-mode",
+      author: "testuser",
+    })),
     getAuthenticatedUser: vi.fn(async () => "testuser"),
     commentOnIssue: vi.fn(async () => {}),
+    commentOnPr: vi.fn(async () => {}),
     createPr: vi.fn(async () => 42),
     getCiStatus: vi.fn(async () => "passing" as const),
     mergePr: vi.fn(async () => {}),
@@ -386,6 +408,41 @@ describe("init handler", () => {
       5,
       expect.stringContaining("Simple issue body"),
     );
+  });
+
+  it("initializes PR mode from PR metadata and uses the remote PR head branch as base", async () => {
+    const deps = makeDeps({
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Fix this PR directly",
+          body: "PR body",
+          baseRefName: "feat/base",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "main",
+    });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.targetKind).toBe("pr");
+    expect(result.ctx.base).toBe("feat/base");
+    expect(result.ctx.branch).toBe("feat/head");
+    expect(result.ctx.headBranch).toBe("feat/head");
+    expect(deps.git.createBranch).toHaveBeenCalledWith(
+      "feat/head",
+      "origin/feat/head",
+      ctx.cwd
+    );
+    expect(deps.github.updateIssueBody).not.toHaveBeenCalled();
   });
 });
 
@@ -790,5 +847,64 @@ describe("creating_pr handler", () => {
     expect(createPr).toHaveBeenCalledWith(
       expect.objectContaining({ base: "main" })
     );
+  });
+
+  it("pushes directly to the existing PR head branch in PR mode", async () => {
+    const createPr = vi.fn(async () => 42);
+    const deps = makeDeps({ github: { createPr } });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "feat/taka-qa-flow",
+      headBranch: "feat/taka-qa-flow",
+      state: "creating_pr",
+      result,
+    });
+
+    const next = await handlers.creating_pr!(ctx);
+
+    expect(deps.git.push).toHaveBeenCalledWith("feat/taka-qa-flow", ctx.cwd);
+    expect(createPr).not.toHaveBeenCalled();
+    expect(next.ctx.prNumber).toBe(5);
+    expect(next.nextState).toBe("watching_ci");
+  });
+});
+
+describe("planning handler", () => {
+  it("posts investigation comments to the PR in PR mode", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      state: "planning",
+      branch: "feat/taka-qa-flow",
+    });
+
+    await handlers.planning!(ctx);
+
+    expect(deps.github.commentOnPr).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("## 🔍 Investigation"),
+    );
+    expect(deps.github.commentOnIssue).not.toHaveBeenCalled();
+  });
+});
+
+describe("closing_issue handler", () => {
+  it("skips issue closing in PR mode", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      state: "closing_issue",
+    });
+
+    const result = await handlers.closing_issue!(ctx);
+
+    expect(result.nextState).toBe("done");
+    expect(deps.github.closeIssue).not.toHaveBeenCalled();
   });
 });

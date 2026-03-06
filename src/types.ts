@@ -59,11 +59,14 @@ export type Fix = z.infer<typeof FixSchema>;
 
 export const RunContextSchema = z.object({
   runId: z.string(),
-  issueNumber: z.number(),
+  targetKind: z.enum(["issue", "pr"]).default("issue"),
+  issueNumber: z.number().optional(),
+  prNumber: z.number().optional(),
   repo: z.string(),
   cwd: z.string(),
   state: RunStateSchema,
   branch: z.string(),
+  headBranch: z.string().optional(),
   base: z.string().default("main"),
   maxFixAttempts: z.number().default(3),
   fixAttempts: z.number().default(0),
@@ -77,7 +80,21 @@ export const RunContextSchema = z.object({
   result: ResultSchema.optional(),
   review: ReviewSchema.optional(),
   fix: FixSchema.optional(),
-  prNumber: z.number().optional(),
+}).superRefine((ctx, issueCtx) => {
+  if (ctx.targetKind === "issue" && ctx.issueNumber == null) {
+    issueCtx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["issueNumber"],
+      message: "issueNumber is required for issue mode",
+    });
+  }
+  if (ctx.targetKind === "pr" && ctx.prNumber == null) {
+    issueCtx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["prNumber"],
+      message: "prNumber is required for PR mode",
+    });
+  }
 });
 export type RunContext = z.infer<typeof RunContextSchema> & {
   /** Set of CLI flags explicitly specified (transient, not persisted) */

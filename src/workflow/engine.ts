@@ -7,6 +7,7 @@ export interface Persistence {
   save(ctx: RunContext): Promise<void>;
   load(runId: string): Promise<RunContext | null>;
   findLatestByIssue?(issueNumber: number): Promise<RunContext | null>;
+  findLatestByPr?(prNumber: number): Promise<RunContext | null>;
 }
 
 export interface WorkflowOptions {

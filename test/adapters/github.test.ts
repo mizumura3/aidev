@@ -52,6 +52,40 @@ describe("GitHubAdapter", () => {
     });
   });
 
+  describe("getPr", () => {
+    it("fetches PR metadata including head/base refs and author", async () => {
+      const prJson = JSON.stringify({
+        number: 5,
+        title: "Improve PR workflow",
+        body: "Please fix this PR directly",
+        baseRefName: "main",
+        headRefName: "feature/pr-mode",
+        author: { login: "testuser" },
+      });
+      mockExeca.mockResolvedValue({ stdout: prJson } as any);
+
+      const pr = await gh.getPr(5);
+
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "pr",
+        "view",
+        "5",
+        "--repo",
+        repo,
+        "--json",
+        "number,title,body,baseRefName,headRefName,author",
+      ]);
+      expect(pr).toEqual({
+        number: 5,
+        title: "Improve PR workflow",
+        body: "Please fix this PR directly",
+        baseRefName: "main",
+        headRefName: "feature/pr-mode",
+        author: "testuser",
+      });
+    });
+  });
+
   describe("createPr", () => {
     it("creates PR and returns number parsed from URL", async () => {
       mockExeca.mockResolvedValue({
@@ -166,6 +200,22 @@ describe("GitHubAdapter", () => {
         repo,
         "--body",
         "## Investigation\nFound the bug.",
+      ]);
+    });
+  });
+
+  describe("commentOnPr", () => {
+    it("posts comment on PR via gh", async () => {
+      mockExeca.mockResolvedValue({ stdout: "" } as any);
+      await gh.commentOnPr(5, "## Investigation\nPR findings.");
+      expect(mockExeca).toHaveBeenCalledWith("gh", [
+        "pr",
+        "comment",
+        "5",
+        "--repo",
+        repo,
+        "--body",
+        "## Investigation\nPR findings.",
       ]);
     });
   });

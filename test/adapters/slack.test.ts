@@ -7,7 +7,8 @@ import {
 
 describe("formatSlackMessage", () => {
   const baseInput: SlackMessageInput = {
-    issueNumber: 42,
+    targetKind: "issue",
+    targetNumber: 42,
     issueTitle: "Add feature X",
     repo: "owner/repo",
     finalState: "done",
@@ -33,6 +34,17 @@ describe("formatSlackMessage", () => {
     expect(msg).toContain("#99");
   });
 
+  it("labels PR targets distinctly from issues", () => {
+    const msg = formatSlackMessage({
+      ...baseInput,
+      targetKind: "pr",
+      targetNumber: 7,
+      issueTitle: "Improve existing PR",
+    });
+    expect(msg).toContain("PR #7");
+    expect(msg).not.toContain("Issue #7");
+  });
+
   it("omits PR link when prNumber is not provided", () => {
     const msg = formatSlackMessage(baseInput);
     expect(msg).not.toContain("PR #");
@@ -52,7 +64,7 @@ describe("formatSlackMessage", () => {
 
   it("uses issue number as title fallback", () => {
     const msg = formatSlackMessage({ ...baseInput, issueTitle: undefined });
-    expect(msg).toContain("#42");
+    expect(msg).toContain("Issue #42");
   });
 });
 

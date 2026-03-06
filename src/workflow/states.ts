@@ -13,6 +13,7 @@ import type { IssueConfig } from "../config/issue-config.js";
 import { mergeConfigs } from "../config/merge-config.js";
 import { buildResolvedConfigBlock, upsertAidevBlock } from "../config/serialize-config.js";
 import type { SkippableState } from "../types.js";
+import type { Issue, PullRequest } from "../adapters/github.js";
 
 export interface Deps {
   git: GitAdapter;
@@ -34,11 +35,58 @@ function shouldAutoMerge(ctx: RunContext): boolean {
   return ctx.autoMerge || ctx.issueLabels.includes("auto-merge");
 }
 
+function toPlanningTarget(workItem: Issue | PullRequest): Issue {
+  return {
+    number: workItem.number,
+    title: workItem.title,
+    body: workItem.body,
+    labels: "labels" in workItem ? workItem.labels : [],
+    author: workItem.author,
+  };
+}
+
 export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
 
   const init: StateHandler = async (ctx) => {
-    const issue = await github.getIssue(ctx.issueNumber);
+    if (ctx.targetKind === "pr") {
+      const pr = await github.getPr(ctx.prNumber!);
+      logger.info("Fetched PR", {
+        number: pr.number,
+        title: pr.title,
+      });
+
+      if (!ctx.skipAuthorCheck) {
+        const authenticatedUser = await github.getAuthenticatedUser();
+        if (pr.author !== authenticatedUser) {
+          throw new Error(
+            `PR #${pr.number} was created by '${pr.author}', not by the authenticated user '${authenticatedUser}'. Use --allow-foreign-issues to bypass this check.`
+          );
+        }
+      }
+
+      const patch: Partial<RunContext> = {
+        issueLabels: [],
+        issueTitle: pr.title,
+        base: ctx._cliExplicit?.has("base") ? ctx.base : pr.baseRefName,
+        branch: pr.headRefName,
+        headBranch: pr.headRefName,
+      };
+
+      const mergedCtx = { ...ctx, ...patch };
+      await git.createBranch(
+        mergedCtx.branch,
+        `origin/${pr.headRefName}`,
+        mergedCtx.cwd
+      );
+      logger.info("Checked out PR head branch", {
+        branch: mergedCtx.branch,
+        base: mergedCtx.base,
+      });
+      return transition(mergedCtx, "planning");
+    }
+
+    const issue = await github.getIssue(ctx.issueNumber!);
     logger.info("Fetched issue", {
       number: issue.number,
       title: issue.title,
@@ -100,16 +148,24 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   };
 
   const planning: StateHandler = async (ctx) => {
-    const issue = await github.getIssue(ctx.issueNumber);
+    const workItem =
+      ctx.targetKind === "pr"
+        ? toPlanningTarget(await github.getPr(ctx.prNumber!))
+        : await github.getIssue(ctx.issueNumber!);
     const planStart = performance.now();
-    const plan = await runPlanner({ issue, cwd: ctx.cwd }, logger);
+    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd }, logger);
     const planElapsed = Math.round(performance.now() - planStart);
     logger.info("Plan created", { summary: plan.summary, agentElapsedMs: planElapsed });
 
     if (plan.investigation) {
       const comment = `## 🔍 Investigation\n\n${plan.investigation}\n\n## Plan\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
-      await github.commentOnIssue(ctx.issueNumber, comment);
-      logger.info("Posted investigation to issue", { issue: ctx.issueNumber });
+      if (ctx.targetKind === "pr") {
+        await github.commentOnPr(ctx.prNumber!, comment);
+        logger.info("Posted investigation to PR", { pr: ctx.prNumber });
+      } else {
+        await github.commentOnIssue(ctx.issueNumber!, comment);
+        logger.info("Posted investigation to issue", { issue: ctx.issueNumber });
+      }
     }
 
     return transition(ctx, "implementing", { plan });
@@ -119,7 +175,12 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (!ctx.plan) throw new Error("No plan available");
     const implStart = performance.now();
     const result = await runImplementer(
-      { plan: ctx.plan, issueNumber: ctx.issueNumber, cwd: ctx.cwd },
+      {
+        plan: ctx.plan,
+        workItemKind: ctx.targetKind,
+        workItemNumber: ctx.targetKind === "pr" ? ctx.prNumber! : ctx.issueNumber!,
+        cwd: ctx.cwd,
+      },
       logger
     );
     const implElapsed = Math.round(performance.now() - implStart);
@@ -172,6 +233,11 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const creating_pr: StateHandler = async (ctx) => {
     if (!ctx.result) throw new Error("No result available");
+    if (ctx.targetKind === "pr") {
+      await git.push(ctx.headBranch ?? ctx.branch, ctx.cwd);
+      logger.info("Updated existing PR branch", { prNumber: ctx.prNumber, branch: ctx.headBranch ?? ctx.branch });
+      return transition(ctx, "watching_ci", { prNumber: ctx.prNumber });
+    }
     await git.push(ctx.branch, ctx.cwd);
     const prNumber = await github.createPr({
       title: ctx.result.commitMessageDraft.split("\n")[0]!,
@@ -249,7 +315,11 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   };
 
   const closing_issue: StateHandler = async (ctx) => {
-    await github.closeIssue(ctx.issueNumber);
+    if (ctx.targetKind === "pr") {
+      logger.info("Skipping issue close for PR mode", { prNumber: ctx.prNumber });
+      return transition(ctx, "done");
+    }
+    await github.closeIssue(ctx.issueNumber!);
     logger.info("Issue closed", { issue: ctx.issueNumber });
     return transition(ctx, "done");
   };

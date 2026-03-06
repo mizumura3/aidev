@@ -14,14 +14,8 @@ export interface GitAdapter {
 export function createGitAdapter(): GitAdapter {
   return {
     async createBranch(name, base, cwd) {
-      try {
-        await execa("git", ["checkout", "-b", name, base], { cwd });
-      } catch {
-        // Branch already exists — reset it from base
-        await execa("git", ["checkout", base], { cwd });
-        await execa("git", ["branch", "-D", name], { cwd });
-        await execa("git", ["checkout", "-b", name], { cwd });
-      }
+      // `-B` creates the branch or resets it to the given base if it exists.
+      await execa("git", ["checkout", "-B", name, base], { cwd });
     },
 
     async addAll(cwd) {
