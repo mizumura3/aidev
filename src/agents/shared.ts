@@ -65,14 +65,19 @@ export function createSafetyHook(): HookCallbackMatcher {
   return { hooks: [hook] };
 }
 
-/** 入れ子判定を回避するために削除する環境変数 */
-const NESTED_DETECTION_VARS = ["CLAUDECODE"];
+/**
+ * SDK サブプロセスから除外する環境変数:
+ * - CLAUDECODE: 入れ子判定を回避
+ * - ANTHROPIC_API_KEY: API Key 認証（クレジット制）ではなく
+ *   サブスクリプション認証（claude login セッション）を使うため除外
+ */
+const EXCLUDED_ENV_VARS = ["CLAUDECODE", "ANTHROPIC_API_KEY"];
 
 export function cleanEnvForSdk(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (NESTED_DETECTION_VARS.includes(key)) continue;
+    if (EXCLUDED_ENV_VARS.includes(key)) continue;
     env[key] = value;
   }
   // SDK として起動することを明示

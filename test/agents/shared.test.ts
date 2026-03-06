@@ -290,10 +290,10 @@ describe("cleanEnvForSdk", () => {
     });
   });
 
-  it("preserves ANTHROPIC_API_KEY", () => {
+  it("excludes ANTHROPIC_API_KEY to use subscription auth", () => {
     withEnv({ ANTHROPIC_API_KEY: "sk-test-key" }, () => {
       const env = cleanEnvForSdk();
-      expect(env.ANTHROPIC_API_KEY).toBe("sk-test-key");
+      expect(env.ANTHROPIC_API_KEY).toBeUndefined();
     });
   });
 
