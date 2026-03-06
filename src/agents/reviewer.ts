@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-code";
 import { ReviewSchema, type Plan, type Review } from "../types.js";
-import { createSafetyHook, extractJson, getBaseSdkOptions, wrapUntrustedContent } from "./shared.js";
+import { consumeStream, createSafetyHook, extractJson, getBaseSdkOptions, wrapUntrustedContent } from "./shared.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ReviewerInput {
@@ -50,12 +50,7 @@ Output ONLY valid JSON, no markdown fences.`;
     },
   });
 
-  let resultText = "";
-  for await (const message of response) {
-    if (message.type === "result" && message.subtype === "success") {
-      resultText = message.result;
-    }
-  }
+  const resultText = await consumeStream(response);
 
   const parsed = extractJson(resultText, "Reviewer");
   return ReviewSchema.parse(parsed);

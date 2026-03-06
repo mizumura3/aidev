@@ -4,6 +4,7 @@ import type {
   HookCallback,
   HookCallbackMatcher,
   Options,
+  SDKMessage,
   SyncHookJSONOutput,
 } from "@anthropic-ai/claude-code";
 
@@ -65,14 +66,19 @@ export function createSafetyHook(): HookCallbackMatcher {
   return { hooks: [hook] };
 }
 
-/** 入れ子判定を回避するために削除する環境変数 */
-const NESTED_DETECTION_VARS = ["CLAUDECODE"];
+/**
+ * SDK サブプロセスから除外する環境変数:
+ * - CLAUDECODE: 入れ子判定を回避
+ * - ANTHROPIC_API_KEY: API Key 認証（クレジット制）ではなく
+ *   サブスクリプション認証（claude login セッション）を使うため除外
+ */
+const EXCLUDED_ENV_VARS = ["CLAUDECODE", "ANTHROPIC_API_KEY"];
 
 export function cleanEnvForSdk(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (NESTED_DETECTION_VARS.includes(key)) continue;
+    if (EXCLUDED_ENV_VARS.includes(key)) continue;
     env[key] = value;
   }
   // SDK として起動することを明示
@@ -116,6 +122,32 @@ export function extractJson(text: string, agentName: string): unknown {
     throw new Error(`${agentName} did not return JSON. Response: ${text.slice(0, 500)}`);
   }
   return JSON.parse(match[0]);
+}
+
+/**
+ * Consumes the SDK async iterator, tolerating non-zero exit codes
+ * when a successful result has already been received.
+ * Claude Code may exit with code 1 due to hooks or cleanup even after
+ * delivering a valid result — this wrapper prevents that from crashing aidev.
+ */
+export async function consumeStream(
+  response: AsyncIterable<SDKMessage>,
+): Promise<string> {
+  let resultText = "";
+  try {
+    for await (const message of response) {
+      if (message.type === "result" && message.subtype === "success") {
+        resultText = message.result;
+      }
+    }
+  } catch (err: unknown) {
+    if (resultText) {
+      // Result already captured — ignore process exit error
+      return resultText;
+    }
+    throw err;
+  }
+  return resultText;
 }
 
 export function getBaseSdkOptions(): Pick<Options, "pathToClaudeCodeExecutable" | "env"> {

@@ -8,10 +8,14 @@ vi.mock("@anthropic-ai/claude-code", () => ({
   query: mockQuery,
 }));
 
-vi.mock("../../src/agents/shared.js", () => ({
-  createSafetyHook: () => ({ command: "true" }),
-  getBaseSdkOptions: () => ({ pathToClaudeCodeExecutable: "/usr/bin/claude" }),
-}));
+vi.mock("../../src/agents/shared.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/agents/shared.js")>();
+  return {
+    ...actual,
+    createSafetyHook: () => ({ command: "true" }),
+    getBaseSdkOptions: () => ({ pathToClaudeCodeExecutable: "/usr/bin/claude" }),
+  };
+});
 
 import { runDocumenter } from "../../src/agents/documenter.js";
 
