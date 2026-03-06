@@ -427,7 +427,6 @@ describe("init handler", () => {
     const ctx = makeCtx({
       targetKind: "pr",
       prNumber: 5,
-      issueNumber: undefined as never,
       branch: "placeholder",
       base: "main",
     });

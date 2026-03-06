@@ -265,7 +265,8 @@ export function createCli() {
         onComplete: async (finalCtx) => {
           const elapsedMs = Math.round(performance.now() - workflowStart);
           const message = formatSlackMessage({
-            issueNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
+            targetKind: finalCtx.targetKind,
+            targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
             issueTitle: finalCtx.issueTitle,
             repo: finalCtx.repo,
             finalState: finalCtx.state as "done" | "failed",
@@ -368,7 +369,8 @@ export function createCli() {
                 onComplete: async (finalCtx) => {
                   const elapsedMs = Math.round(performance.now() - issueStart);
                   const message = formatSlackMessage({
-                    issueNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
+                    targetKind: finalCtx.targetKind,
+                    targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
                     issueTitle: finalCtx.issueTitle,
                     repo: finalCtx.repo,
                     finalState: finalCtx.state as "done" | "failed",

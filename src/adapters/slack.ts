@@ -1,5 +1,6 @@
 export interface SlackMessageInput {
-  issueNumber: number;
+  targetKind: "issue" | "pr";
+  targetNumber: number;
   issueTitle?: string;
   repo: string;
   finalState: "done" | "failed";
@@ -27,10 +28,11 @@ function formatElapsed(ms: number): string {
 export function formatSlackMessage(input: SlackMessageInput): string {
   const icon = input.finalState === "done" ? ":white_check_mark:" : ":x:";
   const status = input.finalState === "done" ? "completed" : "failed";
-  const title = input.issueTitle ?? `Issue #${input.issueNumber}`;
+  const targetLabel = input.targetKind === "pr" ? "PR" : "Issue";
+  const title = input.issueTitle ?? `${targetLabel} #${input.targetNumber}`;
   const elapsed = formatElapsed(input.elapsedMs);
 
-  let msg = `${icon} *aidev* ${status}: ${title} (#${input.issueNumber}) in \`${input.repo}\`\nElapsed: ${elapsed}`;
+  let msg = `${icon} *aidev* ${status}: ${title} (${targetLabel} #${input.targetNumber}) in \`${input.repo}\`\nElapsed: ${elapsed}`;
 
   if (input.prNumber) {
     msg += `\nPR #${input.prNumber}`;
