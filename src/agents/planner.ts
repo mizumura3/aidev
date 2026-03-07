@@ -1,6 +1,6 @@
-import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { PlanSchema, type Plan } from "../types.js";
-import { createSafetyHook, extractJson, getBaseSdkOptions, INJECTION_DEFENSE_PROMPT, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
+import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import type { AgentRunner, SDKMessage } from "./runner.js";
 import type { Issue } from "../adapters/github.js";
 import type { Logger } from "../util/logger.js";
 
@@ -12,6 +12,7 @@ export interface PlannerInput {
 export async function runPlanner(
   input: PlannerInput,
   logger: Logger,
+  runner: AgentRunner,
   onMessage?: (message: SDKMessage) => void
 ): Promise<Plan> {
   const prompt = `Analyze the codebase and the following GitHub issue. Then output your implementation plan as a single JSON object.
@@ -36,27 +37,14 @@ Your final message must contain ONLY the JSON object, nothing else.`;
 
   logger.info("Running planner agent", { issue: input.issue.number });
 
-  const response = query({
-    prompt,
-    options: {
-      ...getBaseSdkOptions(),
-      cwd: input.cwd,
-      permissionMode: "bypassPermissions",
-      allowedTools: ["Read", "Glob", "Grep", "Bash"],
-      hooks: { PreToolUse: [createSafetyHook()] },
-      maxTurns: 20,
-    },
-  });
-
-  const successMessage = await streamAgentResponse(response, {
+  const resultText = await runner.run(prompt, {
+    cwd: input.cwd,
     agentName: "Planner",
     logger,
+    allowedTools: ["Read", "Glob", "Grep", "Bash"],
+    maxTurns: 20,
     onMessage,
   });
-  const resultText =
-    successMessage?.type === "result" && successMessage.subtype === "success"
-      ? successMessage.result
-      : "";
 
   logger.info("Planner response", { length: resultText.length });
 

@@ -1,23 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockQuery } = vi.hoisted(() => ({
-  mockQuery: vi.fn(),
-}));
-
-vi.mock("@anthropic-ai/claude-code", () => ({
-  query: mockQuery,
-}));
-
-vi.mock("../../src/agents/shared.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/agents/shared.js")>();
-  return {
-    ...actual,
-    createSafetyHook: () => ({ command: "true" }),
-    getBaseSdkOptions: () => ({ pathToClaudeCodeExecutable: "/usr/bin/claude" }),
-  };
-});
-
 import { runDocumenter } from "../../src/agents/documenter.js";
+import type { AgentRunner, AgentRunOptions } from "../../src/agents/runner.js";
 
 const noopLogger = {
   debug: vi.fn(),
@@ -26,19 +10,30 @@ const noopLogger = {
   error: vi.fn(),
 };
 
+function createMockRunner() {
+  let capturedPrompt = "";
+  let capturedOptions: AgentRunOptions | undefined;
+  const mockRunner: AgentRunner = {
+    run: vi.fn(async (prompt: string, options: AgentRunOptions) => {
+      capturedPrompt = prompt;
+      capturedOptions = options;
+      return "";
+    }),
+  };
+  return {
+    mockRunner,
+    getPrompt: () => capturedPrompt,
+    getOptions: () => capturedOptions!,
+  };
+}
+
 describe("runDocumenter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("passes changedFiles and changeSummary in the prompt", async () => {
-    let capturedPrompt = "";
-    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getPrompt } = createMockRunner();
 
     await runDocumenter(
       {
@@ -51,22 +46,17 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedPrompt).toContain("Added watch --interval flag");
-    expect(capturedPrompt).toContain("src/cli.ts");
-    expect(capturedPrompt).toContain("src/workflow/engine.ts");
+    expect(getPrompt()).toContain("Added watch --interval flag");
+    expect(getPrompt()).toContain("src/cli.ts");
+    expect(getPrompt()).toContain("src/workflow/engine.ts");
   });
 
   it("instructs to update README when user-facing changes exist", async () => {
-    let capturedPrompt = "";
-    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getPrompt } = createMockRunner();
 
     await runDocumenter(
       {
@@ -79,21 +69,16 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedPrompt).toContain("README");
-    expect(capturedPrompt).toMatch(/no.*update|skip|unnecessary|not needed|do nothing/i);
+    expect(getPrompt()).toContain("README");
+    expect(getPrompt()).toMatch(/no.*update|skip|unnecessary|not needed|do nothing/i);
   });
 
   it("uses only Read, Glob, Grep, Write, Edit tools", async () => {
-    let capturedOptions: Record<string, unknown> = {};
-    mockQuery.mockImplementation(({ options }: { prompt: string; options: Record<string, unknown> }) => {
-      capturedOptions = options;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getOptions } = createMockRunner();
 
     await runDocumenter(
       {
@@ -106,10 +91,11 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedOptions.allowedTools).toEqual([
+    expect(getOptions().allowedTools).toEqual([
       "Read",
       "Glob",
       "Grep",
@@ -119,13 +105,7 @@ describe("runDocumenter", () => {
   });
 
   it("wraps changedFiles in untrusted-content tags", async () => {
-    let capturedPrompt = "";
-    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getPrompt } = createMockRunner();
 
     await runDocumenter(
       {
@@ -138,21 +118,16 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedPrompt).toContain('<untrusted-content source="changed-files">');
-    expect(capturedPrompt).toContain("src/cli.ts");
+    expect(getPrompt()).toContain('<untrusted-content source="changed-files">');
+    expect(getPrompt()).toContain("src/cli.ts");
   });
 
   it("wraps changeSummary in untrusted-content tags", async () => {
-    let capturedPrompt = "";
-    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getPrompt } = createMockRunner();
 
     await runDocumenter(
       {
@@ -165,21 +140,16 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedPrompt).toContain('<untrusted-content source="change-summary">');
-    expect(capturedPrompt).toContain("Added watch --interval flag");
+    expect(getPrompt()).toContain('<untrusted-content source="change-summary">');
+    expect(getPrompt()).toContain("Added watch --interval flag");
   });
 
   it("includes injection defense instructions", async () => {
-    let capturedPrompt = "";
-    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
-      capturedPrompt = prompt;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getPrompt } = createMockRunner();
 
     await runDocumenter(
       {
@@ -192,22 +162,17 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedPrompt).toMatch(/never execute/i);
-    expect(capturedPrompt).toMatch(/never delete/i);
-    expect(capturedPrompt).toMatch(/never skip.*test/i);
+    expect(getPrompt()).toMatch(/never execute/i);
+    expect(getPrompt()).toMatch(/never delete/i);
+    expect(getPrompt()).toMatch(/never skip.*test/i);
   });
 
   it("sets maxTurns to 10", async () => {
-    let capturedOptions: Record<string, unknown> = {};
-    mockQuery.mockImplementation(({ options }: { prompt: string; options: Record<string, unknown> }) => {
-      capturedOptions = options;
-      return (async function* () {
-        yield { type: "result", subtype: "success", result: "" };
-      })();
-    });
+    const { mockRunner, getOptions } = createMockRunner();
 
     await runDocumenter(
       {
@@ -220,9 +185,10 @@ describe("runDocumenter", () => {
         },
         cwd: "/tmp/repo",
       },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
-    expect(capturedOptions.maxTurns).toBe(10);
+    expect(getOptions().maxTurns).toBe(10);
   });
 });

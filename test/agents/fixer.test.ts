@@ -1,25 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockQuery, mockExtractJson } = vi.hoisted(() => ({
-  mockQuery: vi.fn(),
+const { mockExtractJson } = vi.hoisted(() => ({
   mockExtractJson: vi.fn(),
-}));
-
-vi.mock("@anthropic-ai/claude-code", () => ({
-  query: mockQuery,
 }));
 
 vi.mock("../../src/agents/shared.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/agents/shared.js")>();
   return {
     ...actual,
-    createSafetyHook: () => ({ command: "true" }),
     extractJson: mockExtractJson,
-    getBaseSdkOptions: () => ({ pathToClaudeCodeExecutable: "/usr/bin/claude" }),
   };
 });
 
 import { runFixer } from "../../src/agents/fixer.js";
+import type { AgentRunner } from "../../src/agents/runner.js";
 
 const noopLogger = {
   info: vi.fn(),
@@ -29,16 +23,12 @@ const noopLogger = {
 
 function setupMocks() {
   let capturedPrompt = "";
-  mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
-    capturedPrompt = prompt;
-    return (async function* () {
-      yield {
-        type: "result",
-        subtype: "success",
-        result: "{}",
-      };
-    })();
-  });
+  const mockRunner: AgentRunner = {
+    run: vi.fn(async (prompt: string) => {
+      capturedPrompt = prompt;
+      return "{}";
+    }),
+  };
 
   mockExtractJson.mockReturnValue({
     rootCause: "test",
@@ -46,7 +36,7 @@ function setupMocks() {
     filesToTouch: [],
   });
 
-  return () => capturedPrompt;
+  return { getPrompt: () => capturedPrompt, mockRunner };
 }
 
 const samplePlan = {
@@ -65,11 +55,12 @@ describe("runFixer prompt", () => {
   });
 
   it("wraps CI log in untrusted-content delimiter tags", async () => {
-    const getPrompt = setupMocks();
+    const { getPrompt, mockRunner } = setupMocks();
 
     await runFixer(
       { plan: samplePlan, ciLog: "Error: test failed at line 42", cwd: "/tmp" },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
     const capturedPrompt = getPrompt();
@@ -79,11 +70,12 @@ describe("runFixer prompt", () => {
   });
 
   it("wraps plan in untrusted-content delimiter tags", async () => {
-    const getPrompt = setupMocks();
+    const { getPrompt, mockRunner } = setupMocks();
 
     await runFixer(
       { plan: samplePlan, ciLog: "some log", cwd: "/tmp" },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
     const capturedPrompt = getPrompt();
@@ -91,11 +83,12 @@ describe("runFixer prompt", () => {
   });
 
   it("includes injection defense instructions", async () => {
-    const getPrompt = setupMocks();
+    const { getPrompt, mockRunner } = setupMocks();
 
     await runFixer(
       { plan: samplePlan, ciLog: "log", cwd: "/tmp" },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
     const capturedPrompt = getPrompt();
@@ -105,11 +98,12 @@ describe("runFixer prompt", () => {
   });
 
   it("includes system-level instruction about treating delimited content as data", async () => {
-    const getPrompt = setupMocks();
+    const { getPrompt, mockRunner } = setupMocks();
 
     await runFixer(
       { plan: samplePlan, ciLog: "log", cwd: "/tmp" },
-      noopLogger as any
+      noopLogger as any,
+      mockRunner
     );
 
     const capturedPrompt = getPrompt();

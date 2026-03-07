@@ -9,6 +9,7 @@ import { createLogger } from "./util/logger.js";
 import { runWorkflow, type Persistence } from "./workflow/engine.js";
 import { createStateHandlers } from "./workflow/states.js";
 import { runDocumenter } from "./agents/documenter.js";
+import { ClaudeCodeRunner } from "./agents/claude-code-runner.js";
 import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
@@ -253,13 +254,14 @@ export function createCli() {
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
+      const runner = new ClaudeCodeRunner();
       const onProgress = verbose
         ? (message: import("@anthropic-ai/claude-code").SDKMessage) => {
             const line = formatProgressEvent("Agent", message);
             if (line) process.stderr.write(line + "\n");
           }
         : undefined;
-      const handlers = createStateHandlers({ git, github, logger, runDocumenter, loadRepoConfig, onProgress });
+      const handlers = createStateHandlers({ git, github, logger, runner, runDocumenter, loadRepoConfig, onProgress });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
@@ -352,8 +354,9 @@ export function createCli() {
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
+      const runner = new ClaudeCodeRunner();
       const persistence = createFilePersistence(baseDir);
-      const handlers = createStateHandlers({ git, github, logger, runDocumenter, loadRepoConfig });
+      const handlers = createStateHandlers({ git, github, logger, runner, runDocumenter, loadRepoConfig });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,

@@ -1,6 +1,6 @@
-import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { ReviewSchema, type Plan, type Review } from "../types.js";
-import { createSafetyHook, extractJson, getBaseSdkOptions, INJECTION_DEFENSE_PROMPT, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
+import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import type { AgentRunner, SDKMessage } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ReviewerInput {
@@ -12,6 +12,7 @@ export interface ReviewerInput {
 export async function runReviewer(
   input: ReviewerInput,
   logger: Logger,
+  runner: AgentRunner,
   onMessage?: (message: SDKMessage) => void
 ): Promise<Review> {
   const prompt = `You are a code review agent. Review the implementation against the plan.
@@ -39,27 +40,14 @@ Output ONLY valid JSON, no markdown fences.`;
 
   logger.info("Running reviewer agent");
 
-  const response = query({
-    prompt,
-    options: {
-      ...getBaseSdkOptions(),
-      cwd: input.cwd,
-      permissionMode: "bypassPermissions",
-      allowedTools: ["Read", "Glob", "Grep", "Bash"],
-      hooks: { PreToolUse: [createSafetyHook()] },
-      maxTurns: 20,
-    },
-  });
-
-  const successMessage = await streamAgentResponse(response, {
+  const resultText = await runner.run(prompt, {
+    cwd: input.cwd,
     agentName: "Reviewer",
     logger,
+    allowedTools: ["Read", "Glob", "Grep", "Bash"],
+    maxTurns: 20,
     onMessage,
   });
-  const resultText =
-    successMessage?.type === "result" && successMessage.subtype === "success"
-      ? successMessage.result
-      : "";
 
   const parsed = extractJson(resultText, "Reviewer");
   return ReviewSchema.parse(parsed);

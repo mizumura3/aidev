@@ -1,6 +1,6 @@
-import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { ResultSchema, type Plan, type Result } from "../types.js";
-import { createSafetyHook, extractJson, getBaseSdkOptions, INJECTION_DEFENSE_PROMPT, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
+import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import type { AgentRunner, SDKMessage } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ImplementerInput {
@@ -13,6 +13,7 @@ export interface ImplementerInput {
 export async function runImplementer(
   input: ImplementerInput,
   logger: Logger,
+  runner: AgentRunner,
   onMessage?: (message: SDKMessage) => void
 ): Promise<Result> {
   const label = input.workItemKind === "pr" ? "PR" : "issue";
@@ -63,26 +64,13 @@ Output ONLY valid JSON, no markdown fences.`;
     workItemNumber: input.workItemNumber,
   });
 
-  const response = query({
-    prompt,
-    options: {
-      ...getBaseSdkOptions(),
-      cwd: input.cwd,
-      permissionMode: "bypassPermissions",
-      hooks: { PreToolUse: [createSafetyHook()] },
-      maxTurns: 50,
-    },
-  });
-
-  const successMessage = await streamAgentResponse(response, {
+  const resultText = await runner.run(prompt, {
+    cwd: input.cwd,
     agentName: "Implementer",
     logger,
+    maxTurns: 50,
     onMessage,
   });
-  const resultText =
-    successMessage?.type === "result" && successMessage.subtype === "success"
-      ? successMessage.result
-      : "";
 
   const parsed = extractJson(resultText, "Implementer");
   return ResultSchema.parse(parsed);

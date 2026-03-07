@@ -95,9 +95,10 @@ function makeDeps(overrides?: {
     warn: vi.fn(),
     error: vi.fn(),
   };
+  const runner = { run: vi.fn(async () => "") };
   const runDocumenter = overrides?.runDocumenter ?? vi.fn(async () => {});
   const loadRepoConfig = overrides?.loadRepoConfig ?? vi.fn(async () => ({}));
-  return { git, github, logger, runDocumenter, loadRepoConfig };
+  return { git, github, logger, runner, runDocumenter, loadRepoConfig };
 }
 
 describe("init handler", () => {
@@ -688,6 +689,7 @@ describe("committing handler", () => {
     expect(runDocumenter).toHaveBeenCalledWith(
       { result, cwd: "/my/repo" },
       deps.logger,
+      deps.runner,
       undefined
     );
   });

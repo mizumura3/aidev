@@ -1,6 +1,6 @@
-import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { FixSchema, type Fix, type Plan } from "../types.js";
-import { createSafetyHook, extractJson, getBaseSdkOptions, INJECTION_DEFENSE_PROMPT, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
+import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import type { AgentRunner, SDKMessage } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface FixerInput {
@@ -12,6 +12,7 @@ export interface FixerInput {
 export async function runFixer(
   input: FixerInput,
   logger: Logger,
+  runner: AgentRunner,
   onMessage?: (message: SDKMessage) => void
 ): Promise<Fix> {
   const prompt = `You are a CI fix agent. The CI pipeline has failed. Analyze the failure and fix the code.
@@ -38,26 +39,13 @@ Output ONLY valid JSON, no markdown fences.`;
 
   logger.info("Running fixer agent");
 
-  const response = query({
-    prompt,
-    options: {
-      ...getBaseSdkOptions(),
-      cwd: input.cwd,
-      permissionMode: "bypassPermissions",
-      hooks: { PreToolUse: [createSafetyHook()] },
-      maxTurns: 30,
-    },
-  });
-
-  const successMessage = await streamAgentResponse(response, {
+  const resultText = await runner.run(prompt, {
+    cwd: input.cwd,
     agentName: "Fixer",
     logger,
+    maxTurns: 30,
     onMessage,
   });
-  const resultText =
-    successMessage?.type === "result" && successMessage.subtype === "success"
-      ? successMessage.result
-      : "";
 
   const parsed = extractJson(resultText, "Fixer");
   return FixSchema.parse(parsed);

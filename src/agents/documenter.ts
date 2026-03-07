@@ -1,6 +1,6 @@
-import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import type { Result } from "../types.js";
-import { createSafetyHook, getBaseSdkOptions, INJECTION_DEFENSE_PROMPT, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
+import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import type { AgentRunner, SDKMessage } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface DocumenterInput {
@@ -11,6 +11,7 @@ export interface DocumenterInput {
 export async function runDocumenter(
   input: DocumenterInput,
   logger: Logger,
+  runner: AgentRunner,
   onMessage?: (message: SDKMessage) => void
 ): Promise<void> {
   const { result, cwd } = input;
@@ -35,25 +36,16 @@ Instructions:
 
   logger.info("Running documenter agent");
 
-  const response = query({
-    prompt,
-    options: {
-      ...getBaseSdkOptions(),
-      cwd,
-      permissionMode: "bypassPermissions",
-      allowedTools: ["Read", "Glob", "Grep", "Write", "Edit"],
-      hooks: { PreToolUse: [createSafetyHook()] },
-      maxTurns: 10,
-    },
-  });
-
-  const successMessage = await streamAgentResponse(response, {
+  const resultText = await runner.run(prompt, {
+    cwd,
     agentName: "Documenter",
     logger,
+    allowedTools: ["Read", "Glob", "Grep", "Write", "Edit"],
+    maxTurns: 10,
     onMessage,
   });
 
-  if (successMessage?.type === "result" && successMessage.subtype === "success") {
-    logger.info("Documenter completed", { result: successMessage.result.slice(0, 200) });
+  if (resultText) {
+    logger.info("Documenter completed", { result: resultText.slice(0, 200) });
   }
 }
