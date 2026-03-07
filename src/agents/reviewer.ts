@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { ReviewSchema, type Plan, type Review } from "../types.js";
 import { createSafetyHook, extractJson, getBaseSdkOptions, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
 import type { Logger } from "../util/logger.js";
@@ -11,7 +11,8 @@ export interface ReviewerInput {
 
 export async function runReviewer(
   input: ReviewerInput,
-  logger: Logger
+  logger: Logger,
+  onMessage?: (message: SDKMessage) => void
 ): Promise<Review> {
   const prompt = `You are a code review agent. Review the implementation against the plan.
 
@@ -53,6 +54,7 @@ Output ONLY valid JSON, no markdown fences.`;
   const successMessage = await streamAgentResponse(response, {
     agentName: "Reviewer",
     logger,
+    onMessage,
   });
   const resultText =
     successMessage?.type === "result" && successMessage.subtype === "success"

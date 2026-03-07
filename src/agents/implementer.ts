@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { ResultSchema, type Plan, type Result } from "../types.js";
 import { createSafetyHook, extractJson, getBaseSdkOptions, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
 import type { Logger } from "../util/logger.js";
@@ -12,7 +12,8 @@ export interface ImplementerInput {
 
 export async function runImplementer(
   input: ImplementerInput,
-  logger: Logger
+  logger: Logger,
+  onMessage?: (message: SDKMessage) => void
 ): Promise<Result> {
   const label = input.workItemKind === "pr" ? "PR" : "issue";
   const relatedLine =
@@ -76,6 +77,7 @@ Output ONLY valid JSON, no markdown fences.`;
   const successMessage = await streamAgentResponse(response, {
     agentName: "Implementer",
     logger,
+    onMessage,
   });
   const resultText =
     successMessage?.type === "result" && successMessage.subtype === "success"

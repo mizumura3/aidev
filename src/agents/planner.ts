@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { PlanSchema, type Plan } from "../types.js";
 import { createSafetyHook, extractJson, getBaseSdkOptions, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
 import type { Issue } from "../adapters/github.js";
@@ -11,7 +11,8 @@ export interface PlannerInput {
 
 export async function runPlanner(
   input: PlannerInput,
-  logger: Logger
+  logger: Logger,
+  onMessage?: (message: SDKMessage) => void
 ): Promise<Plan> {
   const prompt = `Analyze the codebase and the following GitHub issue. Then output your implementation plan as a single JSON object.
 
@@ -50,6 +51,7 @@ Your final message must contain ONLY the JSON object, nothing else.`;
   const successMessage = await streamAgentResponse(response, {
     agentName: "Planner",
     logger,
+    onMessage,
   });
   const resultText =
     successMessage?.type === "result" && successMessage.subtype === "success"

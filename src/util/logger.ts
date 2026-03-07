@@ -30,11 +30,7 @@ export function createLogger(minLevel: LogLevel = "info"): Logger {
       ...extra,
     };
     const output = JSON.stringify(entry);
-    if (level === "error") {
-      process.stderr.write(output + "\n");
-    } else {
-      process.stdout.write(output + "\n");
-    }
+    process.stderr.write(output + "\n");
   }
 
   return {

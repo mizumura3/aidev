@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { FixSchema, type Fix, type Plan } from "../types.js";
 import { createSafetyHook, extractJson, getBaseSdkOptions, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
 import type { Logger } from "../util/logger.js";
@@ -11,7 +11,8 @@ export interface FixerInput {
 
 export async function runFixer(
   input: FixerInput,
-  logger: Logger
+  logger: Logger,
+  onMessage?: (message: SDKMessage) => void
 ): Promise<Fix> {
   const prompt = `You are a CI fix agent. The CI pipeline has failed. Analyze the failure and fix the code.
 
@@ -51,6 +52,7 @@ Output ONLY valid JSON, no markdown fences.`;
   const successMessage = await streamAgentResponse(response, {
     agentName: "Fixer",
     logger,
+    onMessage,
   });
   const resultText =
     successMessage?.type === "result" && successMessage.subtype === "success"

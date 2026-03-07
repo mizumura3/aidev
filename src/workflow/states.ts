@@ -1,3 +1,4 @@
+import type { SDKMessage } from "@anthropic-ai/claude-code";
 import type { StateHandler, RunContext, RunState } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
@@ -19,8 +20,9 @@ export interface Deps {
   git: GitAdapter;
   github: GitHubAdapter;
   logger: Logger;
-  runDocumenter: (input: DocumenterInput, logger: Logger) => Promise<void>;
+  runDocumenter: (input: DocumenterInput, logger: Logger, onMessage?: (message: SDKMessage) => void) => Promise<void>;
   loadRepoConfig: (cwd: string) => Promise<Partial<IssueConfig>>;
+  onProgress?: (message: SDKMessage) => void;
 }
 
 function transition(
@@ -153,7 +155,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         ? toPlanningTarget(await github.getPr(ctx.prNumber!))
         : await github.getIssue(ctx.issueNumber!);
     const planStart = performance.now();
-    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd }, logger);
+    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd }, logger, deps.onProgress);
     const planElapsed = Math.round(performance.now() - planStart);
     logger.info("Plan created", { summary: plan.summary, agentElapsedMs: planElapsed });
 
@@ -181,7 +183,8 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         workItemNumber: ctx.targetKind === "pr" ? ctx.prNumber! : ctx.issueNumber!,
         cwd: ctx.cwd,
       },
-      logger
+      logger,
+      deps.onProgress
     );
     const implElapsed = Math.round(performance.now() - implStart);
     logger.info("Implementation complete", {
@@ -201,7 +204,8 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const reviewStart = performance.now();
     const review = await runReviewer(
       { plan: ctx.plan, diff, cwd: ctx.cwd },
-      logger
+      logger,
+      deps.onProgress
     );
     const reviewElapsed = Math.round(performance.now() - reviewStart);
     logger.info("Review complete", { decision: review.decision, agentElapsedMs: reviewElapsed });
@@ -217,7 +221,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (ctx.skipStates?.includes("documenter")) {
       logger.info("Skipping documenter (configured in issue)");
     } else {
-      await runDocumenter({ result: ctx.result, cwd: ctx.cwd }, logger);
+      await runDocumenter({ result: ctx.result, cwd: ctx.cwd }, logger, deps.onProgress);
     }
     logger.info("Documentation check completed");
     await git.addAll(ctx.cwd);
@@ -296,7 +300,8 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const fixStart = performance.now();
     const fix = await runFixer(
       { plan: ctx.plan, ciLog, cwd: ctx.cwd },
-      logger
+      logger,
+      deps.onProgress
     );
     const fixElapsed = Math.round(performance.now() - fixStart);
     logger.info("Fix applied", { rootCause: fix.rootCause, agentElapsedMs: fixElapsed });

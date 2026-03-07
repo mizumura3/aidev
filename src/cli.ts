@@ -14,6 +14,7 @@ import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
 import type { RunContext } from "./types.js";
+import { formatProgressEvent } from "./agents/shared.js";
 
 function createFilePersistence(baseDir: string): Persistence {
   return {
@@ -122,11 +123,13 @@ export function createCli() {
     .option("--claude-path <path>", "Path to native Claude Code executable")
     .option("--resume", "Resume the latest run for this target")
     .option("-y, --yes", "Skip interactive confirmation", false)
-    .option("--allow-foreign-issues", "Allow processing issues or PRs from other users", false);
+    .option("--allow-foreign-issues", "Allow processing issues or PRs from other users", false)
+    .option("--verbose", "Emit JSONL progress lines to stderr for external agent observability", false);
 
   runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
-      const logger = createLogger("info");
+      const verbose = opts.verbose as boolean;
+      const logger = createLogger(verbose ? "debug" : "info");
       const baseDir = join(
         process.env.HOME ?? "~",
         ".devloop",
@@ -250,7 +253,13 @@ export function createCli() {
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
-      const handlers = createStateHandlers({ git, github, logger, runDocumenter, loadRepoConfig });
+      const onProgress = verbose
+        ? (message: import("@anthropic-ai/claude-code").SDKMessage) => {
+            const line = formatProgressEvent("Agent", message);
+            if (line) process.stderr.write(line + "\n");
+          }
+        : undefined;
+      const handlers = createStateHandlers({ git, github, logger, runDocumenter, loadRepoConfig, onProgress });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
@@ -261,29 +270,64 @@ export function createCli() {
       logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
       const workflowStart = performance.now();
 
-      const result = await runWorkflow(ctx, handlers, persistence, {
-        logger,
-        onTransition: (from, to) =>
-          logger.info("State transition", { from, to }),
-        onComplete: async (finalCtx) => {
-          const elapsedMs = Math.round(performance.now() - workflowStart);
-          const message = formatSlackMessage({
-            targetKind: finalCtx.targetKind,
-            targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
-            issueTitle: finalCtx.issueTitle,
-            repo: finalCtx.repo,
-            finalState: finalCtx.state as "done" | "failed",
-            elapsedMs,
-            prNumber: finalCtx.prNumber,
-          });
-          await slackNotify(message);
-        },
-      });
+      try {
+        const result = await runWorkflow(ctx, handlers, persistence, {
+          logger,
+          onTransition: (from, to) => {
+            logger.info("State transition", { from, to });
+            if (verbose) {
+              const line = formatProgressEvent("Workflow", {
+                type: "state_transition" as any,
+                from,
+                to,
+              } as any);
+              if (line) process.stderr.write(line + "\n");
+            }
+          },
+          onComplete: async (finalCtx) => {
+            const elapsedMs = Math.round(performance.now() - workflowStart);
+            const message = formatSlackMessage({
+              targetKind: finalCtx.targetKind,
+              targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
+              issueTitle: finalCtx.issueTitle,
+              repo: finalCtx.repo,
+              finalState: finalCtx.state as "done" | "failed",
+              elapsedMs,
+              prNumber: finalCtx.prNumber,
+            });
+            await slackNotify(message);
+          },
+        });
 
-      if (result.state === "done") {
-        logger.info("Devloop completed successfully", { runId: ctx.runId });
-      } else {
-        logger.error("Devloop failed", { runId: ctx.runId, state: result.state });
+        if (result.state === "done") {
+          logger.info("Devloop completed successfully", { runId: ctx.runId });
+          const output = {
+            status: "done" as const,
+            runId: result.runId,
+            prNumber: result.prNumber,
+            changedFiles: result.result?.changedFiles,
+            summary: result.result?.changeSummary,
+          };
+          process.stdout.write(JSON.stringify(output) + "\n");
+        } else {
+          logger.error("Devloop failed", { runId: ctx.runId, state: result.state });
+          const output = {
+            status: "failed" as const,
+            runId: result.runId,
+            failedAt: result.state,
+          };
+          process.stdout.write(JSON.stringify(output) + "\n");
+          process.exit(1);
+        }
+      } catch (err) {
+        logger.error("Devloop crashed", { runId: ctx.runId, error: String(err) });
+        const output = {
+          status: "failed" as const,
+          runId: ctx.runId,
+          failedAt: ctx.state,
+          error: err instanceof Error ? err.message : String(err),
+        };
+        process.stdout.write(JSON.stringify(output) + "\n");
         process.exit(1);
       }
     });

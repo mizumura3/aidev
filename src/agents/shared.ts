@@ -142,6 +142,38 @@ function getRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
+export function formatProgressEvent(
+  agentName: string,
+  message: SDKMessage
+): string | null {
+  if (message.type === "result") {
+    return null;
+  }
+
+  const payload: Record<string, unknown> = {
+    agent: agentName,
+    event: message.type,
+    ts: new Date().toISOString(),
+  };
+
+  const rec = getRecord(message);
+  const subtype = rec?.subtype;
+  if (typeof subtype === "string") {
+    payload.subtype = subtype;
+  }
+
+  const toolName = rec?.name;
+  if (typeof toolName === "string") {
+    payload.tool = toolName;
+  }
+
+  // Support synthetic state_transition events
+  if (typeof rec?.from === "string") payload.from = rec.from;
+  if (typeof rec?.to === "string") payload.to = rec.to;
+
+  return JSON.stringify(payload);
+}
+
 export function logAgentProgress(
   logger: Logger,
   agentName: string,
@@ -220,7 +252,7 @@ export async function streamAgentResponse(
   options: StreamAgentResponseOptions
 ): Promise<SDKMessage | undefined> {
   const iterator = response[Symbol.asyncIterator]();
-  const timeoutMs = options.noOutputTimeoutMs ?? 30_000;
+  const timeoutMs = options.noOutputTimeoutMs ?? 120_000;
   let successMessage: SDKMessage | undefined;
 
   while (true) {

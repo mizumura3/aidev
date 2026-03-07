@@ -687,7 +687,8 @@ describe("committing handler", () => {
 
     expect(runDocumenter).toHaveBeenCalledWith(
       { result, cwd: "/my/repo" },
-      deps.logger
+      deps.logger,
+      undefined
     );
   });
 

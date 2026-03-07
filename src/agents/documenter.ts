@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import type { Result } from "../types.js";
 import { createSafetyHook, getBaseSdkOptions, streamAgentResponse } from "./shared.js";
 import type { Logger } from "../util/logger.js";
@@ -10,7 +10,8 @@ export interface DocumenterInput {
 
 export async function runDocumenter(
   input: DocumenterInput,
-  logger: Logger
+  logger: Logger,
+  onMessage?: (message: SDKMessage) => void
 ): Promise<void> {
   const { result, cwd } = input;
 
@@ -47,6 +48,7 @@ Instructions:
   const successMessage = await streamAgentResponse(response, {
     agentName: "Documenter",
     logger,
+    onMessage,
   });
 
   if (successMessage?.type === "result" && successMessage.subtype === "success") {
