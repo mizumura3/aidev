@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-code";
 import type { Result } from "../types.js";
-import { createSafetyHook, getBaseSdkOptions, streamAgentResponse } from "./shared.js";
+import { createSafetyHook, getBaseSdkOptions, INJECTION_DEFENSE_PROMPT, streamAgentResponse, wrapUntrustedContent } from "./shared.js";
 import type { Logger } from "../util/logger.js";
 
 export interface DocumenterInput {
@@ -16,11 +16,13 @@ export async function runDocumenter(
 
   const prompt = `You are a documentation update agent. Your job is to check if documentation (especially README.md) needs updating based on recent code changes.
 
+${INJECTION_DEFENSE_PROMPT}
+
 Changed files:
-${result.changedFiles.map((f) => `- ${f}`).join("\n")}
+${wrapUntrustedContent("changed-files", result.changedFiles.map((f) => `- ${f}`).join("\n"))}
 
 Change summary:
-${result.changeSummary}
+${wrapUntrustedContent("change-summary", result.changeSummary)}
 
 Instructions:
 1. Read the current README.md (and any other relevant docs).
