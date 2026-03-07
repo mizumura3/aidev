@@ -327,6 +327,16 @@ describe("logAgentProgress", () => {
       })
     );
   });
+
+  it("handles minimal message with only type field", () => {
+    logAgentProgress(logger as any, "Fixer", {
+      type: "system",
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith("Fixer progress", {
+      eventType: "system",
+    });
+  });
 });
 
 describe("streamAgentResponse", () => {
@@ -432,6 +442,27 @@ describe("streamAgentResponse", () => {
     for (const call of progressCalls) {
       expect((call[1] as Record<string, unknown>).eventType).not.toBe("result");
     }
+  });
+
+  it("calls onMessage for every yielded message including result", async () => {
+    const messages: unknown[] = [];
+    const response = (async function* () {
+      yield { type: "assistant" as const, message: { id: "msg_1" } };
+      yield { type: "tool_use" as const, name: "Read" };
+      yield { type: "result" as const, subtype: "success" as const, result: "{}" };
+    })();
+
+    await streamAgentResponse(response, {
+      logger: logger as any,
+      agentName: "Planner",
+      noOutputTimeoutMs: 100,
+      onMessage: (msg) => messages.push(msg),
+    });
+
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toMatchObject({ type: "assistant" });
+    expect(messages[1]).toMatchObject({ type: "tool_use", name: "Read" });
+    expect(messages[2]).toMatchObject({ type: "result", subtype: "success" });
   });
 });
 
