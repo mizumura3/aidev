@@ -594,6 +594,49 @@ describe("extractJson", () => {
   it("throws when no JSON found", () => {
     expect(() => extractJson("No JSON here", "Test")).toThrow("Test did not return JSON");
   });
+
+  it("extracts JSON from markdown code fence with json tag", () => {
+    const text = 'Here is the result:\n```json\n{"summary":"test","steps":["step1"]}\n```\nDone.';
+    const result = extractJson(text, "Test") as any;
+    expect(result.summary).toBe("test");
+  });
+
+  it("extracts JSON from bare markdown code fence", () => {
+    const text = 'Here is the result:\n```\n{"summary":"test","steps":["step1"]}\n```\nDone.';
+    const result = extractJson(text, "Test") as any;
+    expect(result.summary).toBe("test");
+  });
+
+  it("handles greedy match scenario with multiple {} blocks", () => {
+    const json = '{"summary":"fix bug","steps":["step1"]}';
+    const text = `Here is my plan:\n${json}\n\nHere is the code:\n\`\`\`ts\nfunction foo() { return {}; }\n\`\`\``;
+    const result = extractJson(text, "Test") as any;
+    expect(result.summary).toBe("fix bug");
+  });
+
+  it("handles nested braces inside valid JSON", () => {
+    const text = '{"summary":"test","metadata":{"nested":{"deep":"value"}}}';
+    const result = extractJson(text, "Test") as any;
+    expect(result.metadata.nested.deep).toBe("value");
+  });
+
+  it("extracts correct JSON when code block with braces appears before the actual JSON", () => {
+    const text = 'I modified `function() { }` earlier.\n{"summary":"test","steps":["step1"]}';
+    const result = extractJson(text, "Test") as any;
+    expect(result.summary).toBe("test");
+  });
+
+  it("falls back to brace-balanced extraction when code fence contains non-JSON", () => {
+    const text = '```\nnot json content\n```\n{"summary":"test","steps":["step1"]}';
+    const result = extractJson(text, "Test") as any;
+    expect(result.summary).toBe("test");
+  });
+
+  it("prefers code fence JSON over bare JSON in prose", () => {
+    const text = 'Some text {"wrong":"value"}\n```json\n{"summary":"correct","steps":["s1"]}\n```';
+    const result = extractJson(text, "Test") as any;
+    expect(result.summary).toBe("correct");
+  });
 });
 
 describe("wrapUntrustedContent", () => {
