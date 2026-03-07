@@ -113,11 +113,59 @@ ${escaped}
 }
 
 export function extractJson(text: string, agentName: string): unknown {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error(`${agentName} did not return JSON. Response: ${text.slice(0, 500)}`);
+  // 1. Try markdown code fence first (```json ... ``` or ``` ... ```)
+  const fencePattern = /```(?:json)?\s*\n([\s\S]*?)```/g;
+  let fenceMatch;
+  while ((fenceMatch = fencePattern.exec(text)) !== null) {
+    const content = fenceMatch[1].trim();
+    if (content.startsWith("{")) {
+      try {
+        return JSON.parse(content);
+      } catch {
+        // not valid JSON, continue
+      }
+    }
   }
-  return JSON.parse(match[0]);
+
+  // 2. Brace-balanced extraction
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\" && inString) {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      if (depth === 0) {
+        const candidate = text.slice(i, j + 1);
+        try {
+          const parsed = JSON.parse(candidate);
+          if (typeof parsed === "object" && parsed !== null && Object.keys(parsed).length > 0) {
+            return parsed;
+          }
+          break; // valid but empty JSON object, try next opening brace
+        } catch {
+          break; // not valid JSON, try next opening brace
+        }
+      }
+    }
+  }
+
+  throw new Error(`${agentName} did not return JSON. Response: ${text.slice(0, 500)}`);
 }
 
 export function getBaseSdkOptions(): Pick<Options, "pathToClaudeCodeExecutable" | "env"> {
