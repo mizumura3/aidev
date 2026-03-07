@@ -60,6 +60,59 @@ describe("runPlanner prompt", () => {
     vi.clearAllMocks();
   });
 
+  it("logs compact progress events before planner success", async () => {
+    mockQuery.mockImplementation(() =>
+      (async function* () {
+        yield {
+          type: "assistant",
+          message: {
+            id: "msg_1",
+            model: "claude-test",
+          },
+        };
+        yield {
+          type: "tool_use",
+          name: "Read",
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          result: "{}",
+        };
+      })()
+    );
+
+    mockExtractJson.mockReturnValue({
+      summary: "s",
+      steps: ["a"],
+      filesToTouch: [],
+      tests: [],
+      risks: [],
+      acceptanceCriteria: [],
+      investigation: "test",
+    });
+
+    await runPlanner(
+      { issue: { number: 1, title: "Test", body: "body", labels: [] }, cwd: "/tmp" },
+      noopLogger as any
+    );
+
+    expect(noopLogger.info).toHaveBeenCalledWith(
+      "Planner progress",
+      expect.objectContaining({
+        eventType: "assistant",
+        messageId: "msg_1",
+      })
+    );
+    expect(noopLogger.info).toHaveBeenCalledWith(
+      "Planner progress",
+      expect.objectContaining({
+        eventType: "tool_use",
+        toolName: "Read",
+      })
+    );
+  });
+
   it("includes investigation format instructions for markdown lists and inline code", async () => {
     const getPrompt = setupMocks();
 

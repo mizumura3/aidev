@@ -1,6 +1,12 @@
 import { query, type SDKMessage } from "@anthropic-ai/claude-code";
 import { PlanSchema, type Plan } from "../types.js";
-import { createSafetyHook, extractJson, getBaseSdkOptions, wrapUntrustedContent } from "./shared.js";
+import {
+  createSafetyHook,
+  extractJson,
+  getBaseSdkOptions,
+  logAgentProgress,
+  wrapUntrustedContent,
+} from "./shared.js";
 import type { Issue } from "../adapters/github.js";
 import type { Logger } from "../util/logger.js";
 
@@ -49,6 +55,7 @@ Your final message must contain ONLY the JSON object, nothing else.`;
 
   let resultText = "";
   for await (const message of response) {
+    logAgentProgress(logger, "Planner", message as SDKMessage);
     if (message.type === "result" && message.subtype === "success") {
       resultText = message.result;
     }
