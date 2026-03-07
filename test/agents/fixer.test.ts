@@ -90,6 +90,20 @@ describe("runFixer prompt", () => {
     expect(capturedPrompt).toContain('<untrusted-content source="plan">');
   });
 
+  it("includes injection defense instructions", async () => {
+    const getPrompt = setupMocks();
+
+    await runFixer(
+      { plan: samplePlan, ciLog: "log", cwd: "/tmp" },
+      noopLogger as any
+    );
+
+    const capturedPrompt = getPrompt();
+    expect(capturedPrompt).toMatch(/never execute/i);
+    expect(capturedPrompt).toMatch(/never delete/i);
+    expect(capturedPrompt).toMatch(/never skip.*test/i);
+  });
+
   it("includes system-level instruction about treating delimited content as data", async () => {
     const getPrompt = setupMocks();
 

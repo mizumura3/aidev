@@ -118,6 +118,88 @@ describe("runDocumenter", () => {
     ]);
   });
 
+  it("wraps changedFiles in untrusted-content tags", async () => {
+    let capturedPrompt = "";
+    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
+      capturedPrompt = prompt;
+      return (async function* () {
+        yield { type: "result", subtype: "success", result: "" };
+      })();
+    });
+
+    await runDocumenter(
+      {
+        result: {
+          changeSummary: "test summary",
+          changedFiles: ["src/cli.ts", "src/engine.ts"],
+          testsRun: true,
+          commitMessageDraft: "test",
+          prBodyDraft: "",
+        },
+        cwd: "/tmp/repo",
+      },
+      noopLogger as any
+    );
+
+    expect(capturedPrompt).toContain('<untrusted-content source="changed-files">');
+    expect(capturedPrompt).toContain("src/cli.ts");
+  });
+
+  it("wraps changeSummary in untrusted-content tags", async () => {
+    let capturedPrompt = "";
+    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
+      capturedPrompt = prompt;
+      return (async function* () {
+        yield { type: "result", subtype: "success", result: "" };
+      })();
+    });
+
+    await runDocumenter(
+      {
+        result: {
+          changeSummary: "Added watch --interval flag",
+          changedFiles: ["src/cli.ts"],
+          testsRun: true,
+          commitMessageDraft: "test",
+          prBodyDraft: "",
+        },
+        cwd: "/tmp/repo",
+      },
+      noopLogger as any
+    );
+
+    expect(capturedPrompt).toContain('<untrusted-content source="change-summary">');
+    expect(capturedPrompt).toContain("Added watch --interval flag");
+  });
+
+  it("includes injection defense instructions", async () => {
+    let capturedPrompt = "";
+    mockQuery.mockImplementation(({ prompt }: { prompt: string }) => {
+      capturedPrompt = prompt;
+      return (async function* () {
+        yield { type: "result", subtype: "success", result: "" };
+      })();
+    });
+
+    await runDocumenter(
+      {
+        result: {
+          changeSummary: "test",
+          changedFiles: ["a.ts"],
+          testsRun: true,
+          commitMessageDraft: "test",
+          prBodyDraft: "",
+        },
+        cwd: "/tmp/repo",
+      },
+      noopLogger as any
+    );
+
+    expect(capturedPrompt).toMatch(/never execute/i);
+    expect(capturedPrompt).toMatch(/never delete/i);
+    expect(capturedPrompt).toMatch(/never skip.*test/i);
+  });
+
   it("sets maxTurns to 10", async () => {
     let capturedOptions: Record<string, unknown> = {};
     mockQuery.mockImplementation(({ options }: { prompt: string; options: Record<string, unknown> }) => {
