@@ -203,6 +203,57 @@ export function getBaseSdkOptions(): Pick<Options, "pathToClaudeCodeExecutable" 
   };
 }
 
+const COMMAND_TRUNCATE_LENGTH = 120;
+
+export function extractToolDetail(
+  toolName: string,
+  input: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  if (!input) return {};
+
+  if (toolName === "Read" || toolName === "Edit" || toolName === "Write") {
+    const filePath = input.file_path;
+    if (typeof filePath === "string") {
+      const isSensitive = SECRET_FILE_PATTERNS.some((p) => p.test(filePath));
+      return { file_path: isSensitive ? "[REDACTED]" : filePath };
+    }
+    return {};
+  }
+
+  if (toolName === "Bash") {
+    const command = input.command;
+    if (typeof command === "string") {
+      const truncated =
+        command.length > COMMAND_TRUNCATE_LENGTH
+          ? command.slice(0, COMMAND_TRUNCATE_LENGTH) + "..."
+          : command;
+      return { command: truncated };
+    }
+    return {};
+  }
+
+  if (toolName === "Glob" || toolName === "Grep") {
+    const pattern = input.pattern;
+    if (typeof pattern === "string") {
+      return { pattern };
+    }
+    return {};
+  }
+
+  return {};
+}
+
+export function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h${minutes}m${seconds}s`;
+  if (minutes > 0) return `${minutes}m${seconds}s`;
+  return `${seconds}s`;
+}
+
 function getRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -233,11 +284,18 @@ export function formatProgressEvent(
   const toolName = rec?.name;
   if (typeof toolName === "string") {
     payload.tool = toolName;
+
+    const input = getRecord(rec?.input);
+    const detail = extractToolDetail(toolName, input);
+    if (Object.keys(detail).length > 0) {
+      payload.toolDetail = detail;
+    }
   }
 
   // Support synthetic state_transition events
   if (typeof rec?.from === "string") payload.from = rec.from;
   if (typeof rec?.to === "string") payload.to = rec.to;
+  if (typeof rec?.elapsed === "string") payload.elapsed = rec.elapsed;
 
   return JSON.stringify(payload);
 }
@@ -260,9 +318,16 @@ export function logAgentProgress(
     payload.subtype = subtype;
   }
 
-  const directName = getRecord(message)?.name;
+  const rec = getRecord(message);
+  const directName = rec?.name;
   if (typeof directName === "string") {
     payload.toolName = directName;
+
+    const input = getRecord(rec?.input);
+    const detail = extractToolDetail(directName, input);
+    if (Object.keys(detail).length > 0) {
+      payload.toolDetail = detail;
+    }
   }
 
   const nestedMessage = getRecord(getRecord(message)?.message);

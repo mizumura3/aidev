@@ -15,7 +15,7 @@ import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
 import type { RunContext } from "./types.js";
-import { formatProgressEvent } from "./agents/shared.js";
+import { formatElapsed, formatProgressEvent } from "./agents/shared.js";
 
 function createFilePersistence(baseDir: string): Persistence {
   return {
@@ -276,14 +276,16 @@ export function createCli() {
       try {
         const result = await runWorkflow(ctx, handlers, persistence, {
           logger,
-          onTransition: (from, to) => {
+          onTransition: (from, to, elapsedMs) => {
             lastKnownState = to;
-            logger.info("State transition", { from, to });
+            const elapsed = elapsedMs != null ? formatElapsed(elapsedMs) : undefined;
+            logger.info("State transition", { from, to, ...(elapsed ? { elapsed } : {}) });
             if (verbose) {
               const line = formatProgressEvent("Workflow", {
                 type: "state_transition" as any,
                 from,
                 to,
+                ...(elapsed ? { elapsed } : {}),
               } as any);
               if (line) process.stderr.write(line + "\n");
             }

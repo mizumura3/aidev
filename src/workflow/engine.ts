@@ -11,7 +11,7 @@ export interface Persistence {
 }
 
 export interface WorkflowOptions {
-  onTransition?: (from: RunState, to: RunState) => void;
+  onTransition?: (from: RunState, to: RunState, elapsedMs?: number) => void;
   onComplete?: (ctx: RunContext) => Promise<void>;
   logger?: Logger;
 }
@@ -40,7 +40,7 @@ export async function runWorkflow(
     const elapsedMs = Math.round(performance.now() - handlerStart);
 
     logger?.info(`State ${from} completed`, { state: from, elapsedMs });
-    options?.onTransition?.(from, nextState);
+    options?.onTransition?.(from, nextState, elapsedMs);
 
     ctx = { ...nextCtx, state: nextState };
     await persistence.save(ctx);

@@ -84,4 +84,30 @@ describe("formatProgressEvent", () => {
     expect(parsed.from).toBe("planning");
     expect(parsed.to).toBe("implementing");
   });
+
+  it("includes tool details for tool_use with input", () => {
+    const result = formatProgressEvent("Implementer", {
+      type: "tool_use",
+      name: "Read",
+      input: { file_path: "/src/main.ts" },
+    } as any);
+
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result!);
+    expect(parsed.tool).toBe("Read");
+    expect(parsed.toolDetail).toEqual({ file_path: "/src/main.ts" });
+  });
+
+  it("includes elapsed in state_transition when provided", () => {
+    const result = formatProgressEvent("Workflow", {
+      type: "state_transition" as any,
+      from: "planning",
+      to: "implementing",
+      elapsed: "2m20s",
+    } as any);
+
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result!);
+    expect(parsed.elapsed).toBe("2m20s");
+  });
 });

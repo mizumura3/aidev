@@ -3,6 +3,8 @@ import {
   blockDangerousOps,
   cleanEnvForSdk,
   extractJson,
+  extractToolDetail,
+  formatElapsed,
   getBaseSdkOptions,
   findClaudeExecutable,
   logAgentProgress,
@@ -408,6 +410,55 @@ describe("logAgentProgress", () => {
       eventType: "system",
     });
   });
+
+  it("includes toolDetail with file_path for Read tool_use with input", () => {
+    logAgentProgress(logger as any, "Implementer", {
+      type: "tool_use",
+      name: "Read",
+      input: { file_path: "/src/main.ts" },
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Implementer progress",
+      expect.objectContaining({
+        eventType: "tool_use",
+        toolName: "Read",
+        toolDetail: { file_path: "/src/main.ts" },
+      })
+    );
+  });
+
+  it("includes toolDetail with command for Bash tool_use with input", () => {
+    logAgentProgress(logger as any, "Implementer", {
+      type: "tool_use",
+      name: "Bash",
+      input: { command: "npm test" },
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Implementer progress",
+      expect.objectContaining({
+        eventType: "tool_use",
+        toolName: "Bash",
+        toolDetail: { command: "npm test" },
+      })
+    );
+  });
+
+  it("redacts sensitive file paths in toolDetail", () => {
+    logAgentProgress(logger as any, "Implementer", {
+      type: "tool_use",
+      name: "Read",
+      input: { file_path: "/home/user/.env" },
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Implementer progress",
+      expect.objectContaining({
+        toolDetail: { file_path: "[REDACTED]" },
+      })
+    );
+  });
 });
 
 describe("streamAgentResponse", () => {
@@ -762,6 +813,97 @@ describe("wrapUntrustedContent", () => {
   it("contains explicit anti-injection language", () => {
     const result = wrapUntrustedContent("test", "content");
     expect(result).toMatch(/never.*execute|never.*delete|never.*skip/i);
+  });
+});
+
+describe("extractToolDetail", () => {
+  it("extracts file_path for Read tool", () => {
+    const detail = extractToolDetail("Read", { file_path: "/src/main.ts" });
+    expect(detail).toEqual({ file_path: "/src/main.ts" });
+  });
+
+  it("extracts file_path for Edit tool", () => {
+    const detail = extractToolDetail("Edit", { file_path: "/src/utils.ts", old_string: "a", new_string: "b" });
+    expect(detail).toEqual({ file_path: "/src/utils.ts" });
+  });
+
+  it("extracts file_path for Write tool", () => {
+    const detail = extractToolDetail("Write", { file_path: "/src/new.ts", content: "hello" });
+    expect(detail).toEqual({ file_path: "/src/new.ts" });
+  });
+
+  it("redacts sensitive file paths (.env)", () => {
+    const detail = extractToolDetail("Read", { file_path: "/home/user/.env" });
+    expect(detail).toEqual({ file_path: "[REDACTED]" });
+  });
+
+  it("redacts sensitive file paths (.pem)", () => {
+    const detail = extractToolDetail("Read", { file_path: "/home/user/cert.pem" });
+    expect(detail).toEqual({ file_path: "[REDACTED]" });
+  });
+
+  it("redacts sensitive file paths (id_rsa)", () => {
+    const detail = extractToolDetail("Edit", { file_path: "/home/user/.ssh/id_rsa" });
+    expect(detail).toEqual({ file_path: "[REDACTED]" });
+  });
+
+  it("redacts sensitive file paths (.key)", () => {
+    const detail = extractToolDetail("Write", { file_path: "/home/user/server.key", content: "x" });
+    expect(detail).toEqual({ file_path: "[REDACTED]" });
+  });
+
+  it("extracts truncated command for Bash tool", () => {
+    const detail = extractToolDetail("Bash", { command: "echo hello world" });
+    expect(detail).toEqual({ command: "echo hello world" });
+  });
+
+  it("truncates long Bash commands to 120 chars", () => {
+    const longCmd = "a".repeat(200);
+    const detail = extractToolDetail("Bash", { command: longCmd });
+    expect(detail.command).toHaveLength(123); // 120 + "..."
+    expect(detail.command).toMatch(/\.\.\.$/);
+  });
+
+  it("extracts pattern for Glob tool", () => {
+    const detail = extractToolDetail("Glob", { pattern: "**/*.ts" });
+    expect(detail).toEqual({ pattern: "**/*.ts" });
+  });
+
+  it("extracts pattern for Grep tool", () => {
+    const detail = extractToolDetail("Grep", { pattern: "function\\s+\\w+" });
+    expect(detail).toEqual({ pattern: "function\\s+\\w+" });
+  });
+
+  it("returns empty object for unknown tool", () => {
+    const detail = extractToolDetail("UnknownTool", { foo: "bar" });
+    expect(detail).toEqual({});
+  });
+
+  it("returns empty object when input is undefined", () => {
+    const detail = extractToolDetail("Read", undefined);
+    expect(detail).toEqual({});
+  });
+});
+
+describe("formatElapsed", () => {
+  it("formats seconds only", () => {
+    expect(formatElapsed(5000)).toBe("5s");
+  });
+
+  it("formats minutes and seconds", () => {
+    expect(formatElapsed(140000)).toBe("2m20s");
+  });
+
+  it("formats hours, minutes and seconds", () => {
+    expect(formatElapsed(3661000)).toBe("1h1m1s");
+  });
+
+  it("formats zero", () => {
+    expect(formatElapsed(0)).toBe("0s");
+  });
+
+  it("rounds sub-second to 0s", () => {
+    expect(formatElapsed(500)).toBe("0s");
   });
 });
 
