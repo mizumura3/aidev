@@ -316,4 +316,32 @@ describe("run command result output", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toContain("Planner emitted no output");
   });
+
+  it("reports the last known state in failedAt when workflow crashes mid-run", async () => {
+    mockRunWorkflow.mockImplementation(async (_ctx: any, _handlers: any, _persistence: any, options: any) => {
+      options?.onTransition?.("init", "planning");
+      options?.onTransition?.("planning", "implementing");
+      throw new Error("Agent timeout");
+    });
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node", "aidev", "run", "--issue", "10",
+      "--repo", "owner/repo", "--cwd", "/tmp/repo", "-y",
+    ]);
+
+    const stdoutCalls = stdoutSpy.mock.calls.map((c) => c[0] as string);
+    const resultLine = stdoutCalls.find((line) => {
+      try {
+        return JSON.parse(line).status !== undefined;
+      } catch {
+        return false;
+      }
+    });
+
+    expect(resultLine).toBeDefined();
+    const result = JSON.parse(resultLine!);
+    expect(result.status).toBe("failed");
+    expect(result.failedAt).toBe("implementing");
+  });
 });

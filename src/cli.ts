@@ -269,11 +269,13 @@ export function createCli() {
 
       logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
       const workflowStart = performance.now();
+      let lastKnownState = ctx.state;
 
       try {
         const result = await runWorkflow(ctx, handlers, persistence, {
           logger,
           onTransition: (from, to) => {
+            lastKnownState = to;
             logger.info("State transition", { from, to });
             if (verbose) {
               const line = formatProgressEvent("Workflow", {
@@ -324,7 +326,7 @@ export function createCli() {
         const output = {
           status: "failed" as const,
           runId: ctx.runId,
-          failedAt: ctx.state,
+          failedAt: lastKnownState,
           error: err instanceof Error ? err.message : String(err),
         };
         process.stdout.write(JSON.stringify(output) + "\n");
