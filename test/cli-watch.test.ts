@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock modules before any imports
-const mockAddWorktree = vi.fn(async () => {});
-const mockRemoveWorktree = vi.fn(async () => {});
+const { mockAddWorktree, mockRemoveWorktree, mockRunPreflightChecks } = vi.hoisted(() => ({
+  mockAddWorktree: vi.fn(async () => {}),
+  mockRemoveWorktree: vi.fn(async () => {}),
+  mockRunPreflightChecks: vi.fn(async () => {}),
+}));
 
 vi.mock("../src/adapters/git.js", () => ({
   createGitAdapter: vi.fn(() => ({
@@ -38,6 +41,10 @@ vi.mock("../src/workflow/states.js", () => ({
 
 vi.mock("../src/workflow/engine.js", () => ({
   runWorkflow: vi.fn(async (ctx: any) => ({ ...ctx, state: "done" })),
+}));
+
+vi.mock("../src/preflight.js", () => ({
+  runPreflightChecks: mockRunPreflightChecks,
 }));
 
 import { createCli } from "../src/cli.js";
