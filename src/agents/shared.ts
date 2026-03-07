@@ -117,8 +117,8 @@ export function extractJson(text: string, agentName: string): unknown {
   const fencePattern = /```(?:json)?\s*\n([\s\S]*?)```/g;
   let fenceMatch;
   while ((fenceMatch = fencePattern.exec(text)) !== null) {
-    const content = fenceMatch[1].trim();
-    if (content.startsWith("{")) {
+    const content = fenceMatch[1]?.trim();
+    if (content?.startsWith("{")) {
       try {
         return JSON.parse(content);
       } catch {
