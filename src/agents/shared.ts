@@ -135,6 +135,47 @@ export function getBaseSdkOptions(): Pick<Options, "pathToClaudeCodeExecutable" 
   };
 }
 
+function getRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+export function logAgentProgress(
+  logger: Logger,
+  agentName: string,
+  message: SDKMessage
+): void {
+  if (message.type === "result") {
+    return;
+  }
+
+  const payload: Record<string, unknown> = {
+    eventType: message.type,
+  };
+
+  const subtype = getRecord(message)?.subtype;
+  if (typeof subtype === "string") {
+    payload.subtype = subtype;
+  }
+
+  const directName = getRecord(message)?.name;
+  if (typeof directName === "string") {
+    payload.toolName = directName;
+  }
+
+  const nestedMessage = getRecord(getRecord(message)?.message);
+  if (typeof nestedMessage?.id === "string") {
+    payload.messageId = nestedMessage.id;
+  }
+  if (typeof nestedMessage?.model === "string") {
+    payload.model = nestedMessage.model;
+  }
+
+  logger.info(`${agentName} progress`, payload);
+}
+
 export interface StreamAgentResponseOptions {
   agentName: string;
   logger: Logger;
@@ -189,6 +230,7 @@ export async function streamAgentResponse(
     }
 
     const message = next.value;
+    logAgentProgress(options.logger, options.agentName, message);
     options.onMessage?.(message);
 
     if (message.type === "result" && message.subtype === "success") {

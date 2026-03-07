@@ -1,10 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   blockDangerousOps,
   cleanEnvForSdk,
   extractJson,
   getBaseSdkOptions,
   findClaudeExecutable,
+  logAgentProgress,
   streamAgentResponse,
   wrapUntrustedContent,
 } from "../../src/agents/shared.js";
@@ -260,12 +261,84 @@ describe("blockDangerousOps", () => {
   });
 });
 
+describe("logAgentProgress", () => {
+  const logger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("logs assistant message with messageId and model", () => {
+    logAgentProgress(logger as any, "Planner", {
+      type: "assistant",
+      message: { id: "msg_1", model: "claude-opus-4-6" },
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Planner progress",
+      expect.objectContaining({
+        eventType: "assistant",
+        messageId: "msg_1",
+        model: "claude-opus-4-6",
+      })
+    );
+  });
+
+  it("logs tool_use message with toolName", () => {
+    logAgentProgress(logger as any, "Planner", {
+      type: "tool_use",
+      name: "Read",
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Planner progress",
+      expect.objectContaining({
+        eventType: "tool_use",
+        toolName: "Read",
+      })
+    );
+  });
+
+  it("skips result messages", () => {
+    logAgentProgress(logger as any, "Planner", {
+      type: "result",
+      subtype: "success",
+      result: "{}",
+    } as any);
+
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it("includes subtype when present", () => {
+    logAgentProgress(logger as any, "Reviewer", {
+      type: "error",
+      subtype: "tool_error",
+    } as any);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Reviewer progress",
+      expect.objectContaining({
+        eventType: "error",
+        subtype: "tool_error",
+      })
+    );
+  });
+});
+
 describe("streamAgentResponse", () => {
   const logger = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
   };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it("throws when no output arrives before the watchdog deadline", async () => {
     const response = (async function* () {
@@ -318,6 +391,47 @@ describe("streamAgentResponse", () => {
       subtype: "success",
       result: '{"ok":true}',
     });
+  });
+
+  it("logs progress for non-result messages via logAgentProgress", async () => {
+    const response = (async function* () {
+      yield {
+        type: "assistant" as const,
+        message: { id: "msg_1", model: "claude-opus-4-6" },
+      };
+      yield {
+        type: "tool_use" as const,
+        name: "Grep",
+      };
+      yield {
+        type: "result" as const,
+        subtype: "success" as const,
+        result: '{"ok":true}',
+      };
+    })();
+
+    await streamAgentResponse(response, {
+      logger: logger as any,
+      agentName: "Implementer",
+      noOutputTimeoutMs: 100,
+    });
+
+    // assistant and tool_use should be logged, result should not
+    expect(logger.info).toHaveBeenCalledWith(
+      "Implementer progress",
+      expect.objectContaining({ eventType: "assistant", messageId: "msg_1" })
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "Implementer progress",
+      expect.objectContaining({ eventType: "tool_use", toolName: "Grep" })
+    );
+    // result type should NOT appear in progress logs
+    const progressCalls = logger.info.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === "string" && call[0].includes("progress")
+    );
+    for (const call of progressCalls) {
+      expect((call[1] as Record<string, unknown>).eventType).not.toBe("result");
+    }
   });
 });
 
