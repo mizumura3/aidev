@@ -1,4 +1,4 @@
-import type { AgentRunner, SDKMessage } from "../agents/runner.js";
+import type { AgentRunner, ProgressEvent } from "../agents/runner.js";
 import type { StateHandler, RunContext, RunState } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
@@ -21,9 +21,9 @@ export interface Deps {
   github: GitHubAdapter;
   logger: Logger;
   runner: AgentRunner;
-  runDocumenter: (input: DocumenterInput, logger: Logger, runner: AgentRunner, onMessage?: (message: SDKMessage) => void) => Promise<void>;
+  runDocumenter: (input: DocumenterInput, logger: Logger, runner: AgentRunner, onMessage?: (message: ProgressEvent) => void) => Promise<void>;
   loadRepoConfig: (cwd: string) => Promise<Partial<IssueConfig>>;
-  onProgress?: (message: SDKMessage) => void;
+  onProgress?: (message: ProgressEvent) => void;
 }
 
 function transition(

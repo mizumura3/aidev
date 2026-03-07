@@ -1,6 +1,6 @@
 import type { Result } from "../types.js";
 import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
-import type { AgentRunner, SDKMessage } from "./runner.js";
+import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface DocumenterInput {
@@ -12,7 +12,7 @@ export async function runDocumenter(
   input: DocumenterInput,
   logger: Logger,
   runner: AgentRunner,
-  onMessage?: (message: SDKMessage) => void
+  onMessage?: (message: ProgressEvent) => void
 ): Promise<void> {
   const { result, cwd } = input;
 

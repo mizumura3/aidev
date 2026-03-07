@@ -1,7 +1,9 @@
-import type { SDKMessage } from "@anthropic-ai/claude-code";
 import type { Logger } from "../util/logger.js";
 
-export type { SDKMessage };
+export interface ProgressEvent {
+  type: string;
+  [key: string]: unknown;
+}
 
 export interface AgentRunOptions {
   cwd: string;
@@ -9,7 +11,7 @@ export interface AgentRunOptions {
   logger: Logger;
   allowedTools?: string[];
   maxTurns?: number;
-  onMessage?: (message: SDKMessage) => void;
+  onMessage?: (message: ProgressEvent) => void;
 }
 
 export interface AgentRunner {

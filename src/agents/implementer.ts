@@ -1,6 +1,6 @@
 import { ResultSchema, type Plan, type Result } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
-import type { AgentRunner, SDKMessage } from "./runner.js";
+import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ImplementerInput {
@@ -14,7 +14,7 @@ export async function runImplementer(
   input: ImplementerInput,
   logger: Logger,
   runner: AgentRunner,
-  onMessage?: (message: SDKMessage) => void
+  onMessage?: (message: ProgressEvent) => void
 ): Promise<Result> {
   const label = input.workItemKind === "pr" ? "PR" : "issue";
   const relatedLine =

@@ -1,6 +1,6 @@
 import { FixSchema, type Fix, type Plan } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
-import type { AgentRunner, SDKMessage } from "./runner.js";
+import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface FixerInput {
@@ -13,7 +13,7 @@ export async function runFixer(
   input: FixerInput,
   logger: Logger,
   runner: AgentRunner,
-  onMessage?: (message: SDKMessage) => void
+  onMessage?: (message: ProgressEvent) => void
 ): Promise<Fix> {
   const prompt = `You are a CI fix agent. The CI pipeline has failed. Analyze the failure and fix the code.
 

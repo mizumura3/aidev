@@ -1,6 +1,6 @@
 import { ReviewSchema, type Plan, type Review } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
-import type { AgentRunner, SDKMessage } from "./runner.js";
+import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
 export interface ReviewerInput {
@@ -13,7 +13,7 @@ export async function runReviewer(
   input: ReviewerInput,
   logger: Logger,
   runner: AgentRunner,
-  onMessage?: (message: SDKMessage) => void
+  onMessage?: (message: ProgressEvent) => void
 ): Promise<Review> {
   const prompt = `You are a code review agent. Review the implementation against the plan.
 

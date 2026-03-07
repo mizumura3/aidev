@@ -256,7 +256,7 @@ export function createCli() {
       const github = createGitHubAdapter(ctx.repo);
       const runner = new ClaudeCodeRunner();
       const onProgress = verbose
-        ? (message: import("@anthropic-ai/claude-code").SDKMessage) => {
+        ? (message: import("./agents/runner.js").ProgressEvent) => {
             const line = formatProgressEvent("Agent", message);
             if (line) process.stderr.write(line + "\n");
           }

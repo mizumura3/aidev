@@ -212,7 +212,7 @@ function getRecord(value: unknown): Record<string, unknown> | undefined {
 
 export function formatProgressEvent(
   agentName: string,
-  message: SDKMessage
+  message: { type: string; [key: string]: unknown }
 ): string | null {
   if (message.type === "result") {
     return null;

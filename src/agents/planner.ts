@@ -1,6 +1,6 @@
 import { PlanSchema, type Plan } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
-import type { AgentRunner, SDKMessage } from "./runner.js";
+import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Issue } from "../adapters/github.js";
 import type { Logger } from "../util/logger.js";
 
@@ -13,7 +13,7 @@ export async function runPlanner(
   input: PlannerInput,
   logger: Logger,
   runner: AgentRunner,
-  onMessage?: (message: SDKMessage) => void
+  onMessage?: (message: ProgressEvent) => void
 ): Promise<Plan> {
   const prompt = `Analyze the codebase and the following GitHub issue. Then output your implementation plan as a single JSON object.
 
