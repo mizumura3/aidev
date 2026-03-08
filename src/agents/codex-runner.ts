@@ -28,7 +28,7 @@ export class CodexRunner implements AgentRunner {
     }
 
     const thread = this.codex.startThread({
-      ...(this.config.model && { model: this.config.model }),
+      ...(this.config.model !== undefined && { model: this.config.model }),
       workingDirectory: options.cwd,
       sandboxMode: "danger-full-access",
     });

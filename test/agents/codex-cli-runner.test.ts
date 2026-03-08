@@ -37,7 +37,7 @@ describe("CodexCliRunner", () => {
     expect(mockExeca).toHaveBeenCalledWith(
       "codex",
       expect.arrayContaining(["exec", "-s", "danger-full-access", "-C", "/my/project"]),
-      expect.objectContaining({ cwd: "/my/project" }),
+      expect.objectContaining({ cwd: "/my/project", timeout: 600_000 }),
     );
   });
 

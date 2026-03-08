@@ -22,13 +22,16 @@ export class CodexCliRunner implements AgentRunner {
 
     const args = ["exec", "-s", "danger-full-access", "-C", options.cwd];
 
-    if (this.config.model) {
+    if (this.config.model !== undefined) {
       args.push("--model", this.config.model);
     }
 
     args.push("--", prompt);
 
-    const { stdout, stderr } = await execa("codex", args, { cwd: options.cwd });
+    const { stdout, stderr } = await execa("codex", args, {
+      cwd: options.cwd,
+      timeout: 600_000,
+    });
     if (stderr) {
       options.logger.debug("codex stderr", { stderr });
     }
