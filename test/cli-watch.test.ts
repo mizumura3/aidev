@@ -796,4 +796,252 @@ describe("run command", () => {
     // Workflow should have been called (confirmation skipped)
     expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
   });
+
+  it("creates worktree and passes worktree cwd to runWorkflow", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+      "--cwd",
+      "/tmp/myrepo",
+    ]);
+
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+    expect(mockAddWorktree).toHaveBeenCalledWith(
+      expect.stringContaining(".worktrees/issue-42"),
+      "main",
+      "/tmp/myrepo",
+    );
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.cwd).toContain(".worktrees/issue-42");
+  });
+
+  it("cleans up worktree after successful run", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+    ]);
+
+    // Called twice: once for stale cleanup before addWorktree, once in finally
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
+  });
+
+  it("cleans up worktree after failed run", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockRejectedValue(new Error("workflow crashed"));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+    ]);
+
+    // Called twice: once for stale cleanup before addWorktree, once in finally
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates worktree from opts.cwd even when resuming (saved cwd may be stale)", async () => {
+    // When resuming, ctx.cwd from saved state points to a now-deleted worktree path.
+    // The worktree should be created from opts.cwd (the original repo), not ctx.cwd.
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".devloop", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "planning",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: false,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // Worktree should be created from /tmp/real-repo, NOT from the stale saved cwd
+      expect(mockAddWorktree).toHaveBeenCalledWith(
+        expect.stringContaining("/tmp/real-repo/.worktrees/issue-42"),
+        "main",
+        "/tmp/real-repo",
+      );
+    } finally {
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("uses --base for worktree creation", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+      "--base",
+      "v1.2.0",
+    ]);
+
+    expect(mockAddWorktree).toHaveBeenCalledWith(
+      expect.stringContaining(".worktrees/issue-42"),
+      "v1.2.0",
+      expect.any(String),
+    );
+  });
 });

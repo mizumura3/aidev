@@ -290,11 +290,24 @@ export function createCli() {
         channel: process.env.AIDEV_SLACK_CHANNEL,
       });
 
+      // Create worktree for isolated work (always use original repo path, not ctx.cwd which may be stale from resume)
+      const originalCwd = opts.cwd;
+      const worktreePath = join(originalCwd, ".worktrees", `${targetKind}-${targetNumber}`);
+
       logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
       const workflowStart = performance.now();
       let lastKnownState = ctx.state;
 
+      let exitCode = 0;
+      let worktreeCreated = false;
       try {
+        // Remove stale worktree from a previous interrupted run, if any
+        await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
+        await git.addWorktree(worktreePath, ctx.base, originalCwd);
+        worktreeCreated = true;
+        ctx.cwd = worktreePath;
+        logger.info("Created worktree", { path: worktreePath, base: ctx.base });
+
         const result = await runWorkflow(ctx, handlers, persistence, {
           logger,
           onTransition: (from, to, elapsedMs) => {
@@ -344,7 +357,7 @@ export function createCli() {
             reason: result.review?.reason ?? result.review?.summary,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
-          process.exit(1);
+          exitCode = 1;
         } else {
           logger.error("Devloop failed", { runId: ctx.runId, state: result.state });
           const output = {
@@ -353,7 +366,7 @@ export function createCli() {
             failedAt: result.state,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
-          process.exit(1);
+          exitCode = 1;
         }
       } catch (err) {
         logger.error("Devloop crashed", { runId: ctx.runId, error: String(err) });
@@ -364,8 +377,18 @@ export function createCli() {
           error: err instanceof Error ? err.message : String(err),
         };
         process.stdout.write(JSON.stringify(output) + "\n");
-        process.exit(1);
+        exitCode = 1;
+      } finally {
+        if (worktreeCreated) {
+          await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
+            logger.error("Worktree cleanup failed", {
+              path: worktreePath,
+              error: String(err),
+            })
+          );
+        }
       }
+      if (exitCode !== 0) process.exit(exitCode);
     });
 
   program
