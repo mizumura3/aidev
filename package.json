@@ -21,7 +21,6 @@
   },
   "devDependencies": {
     "@types/node": "^22",
-    "memfs": "^4.56.11",
     "typescript": "^5.7",
     "vitest": "^3"
   }

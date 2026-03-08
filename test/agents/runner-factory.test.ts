@@ -25,11 +25,6 @@ describe("createRunner", () => {
     expect(typeof runner.run).toBe("function");
   });
 
-  it("defaults to claude-code when backend is 'claude-code'", () => {
-    const runner = createRunner({ backend: "claude-code" });
-    expect(runner).toBeDefined();
-  });
-
   it("throws for unknown backend with available backends listed", () => {
     expect(() => createRunner({ backend: "unknown-backend" })).toThrow(
       /Unknown backend "unknown-backend"/,

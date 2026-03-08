@@ -98,7 +98,8 @@ function makeDeps(overrides?: {
   const runner = { run: vi.fn(async () => "") };
   const runDocumenter = overrides?.runDocumenter ?? vi.fn(async () => {});
   const loadRepoConfig = overrides?.loadRepoConfig ?? vi.fn(async () => ({}));
-  return { git, github, logger, runner, runDocumenter, loadRepoConfig };
+  const resolveRunner = vi.fn(() => runner);
+  return { git, github, logger, runner, runDocumenter, loadRepoConfig, resolveRunner };
 }
 
 describe("init handler", () => {

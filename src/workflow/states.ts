@@ -23,7 +23,7 @@ export interface Deps {
   github: GitHubAdapter;
   logger: Logger;
   runner: AgentRunner;
-  resolveRunner?: (config: BackendConfig) => AgentRunner;
+  resolveRunner: (config: BackendConfig) => AgentRunner;
   runDocumenter: (input: DocumenterInput, logger: Logger, runner: AgentRunner, onMessage?: (message: ProgressEvent) => void) => Promise<void>;
   loadRepoConfig: (cwd: string) => Promise<Partial<IssueConfig>>;
   onProgress?: (message: ProgressEvent) => void;
@@ -53,7 +53,12 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
 
 export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
-  let runner = deps.runner;
+  const defaultRunner = deps.runner;
+  const runnerByRunId = new Map<string, AgentRunner>();
+
+  function getRunner(ctx: RunContext): AgentRunner {
+    return runnerByRunId.get(ctx.runId) ?? defaultRunner;
+  }
 
   const init: StateHandler = async (ctx) => {
     if (ctx.targetKind === "pr") {
@@ -137,21 +142,15 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
     // Re-create runner if backend/model changed via Issue or repo config
     if (merged.backend || merged.model) {
-      if (deps.resolveRunner) {
-        runner = deps.resolveRunner({
-          backend: merged.backend ?? DEFAULT_BACKEND,
-          model: merged.model,
-        });
-        logger.info("Switched backend from merged config", {
-          backend: merged.backend,
-          model: merged.model,
-        });
-      } else {
-        logger.warn("backend/model specified in config but resolveRunner not provided; ignoring", {
-          backend: merged.backend,
-          model: merged.model,
-        });
-      }
+      const resolved = deps.resolveRunner({
+        backend: merged.backend ?? DEFAULT_BACKEND,
+        model: merged.model,
+      });
+      runnerByRunId.set(ctx.runId, resolved);
+      logger.info("Switched backend from merged config", {
+        backend: merged.backend,
+        model: merged.model,
+      });
     }
 
     const mergedCtx = { ...ctx, ...patch };
@@ -181,7 +180,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         ? toPlanningTarget(await github.getPr(ctx.prNumber!))
         : await github.getIssue(ctx.issueNumber!);
     const planStart = performance.now();
-    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd }, logger, runner, deps.onProgress);
+    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd }, logger, getRunner(ctx), deps.onProgress);
     const planElapsed = Math.round(performance.now() - planStart);
     logger.info("Plan created", { summary: plan.summary, agentElapsedMs: planElapsed });
 
@@ -210,7 +209,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         cwd: ctx.cwd,
       },
       logger,
-      runner,
+      getRunner(ctx),
       deps.onProgress
     );
     const implElapsed = Math.round(performance.now() - implStart);
@@ -232,7 +231,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const review = await runReviewer(
       { plan: ctx.plan, diff, cwd: ctx.cwd },
       logger,
-      runner,
+      getRunner(ctx),
       deps.onProgress
     );
     const reviewElapsed = Math.round(performance.now() - reviewStart);
@@ -249,7 +248,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (ctx.skipStates?.includes("documenter")) {
       logger.info("Skipping documenter (configured in issue)");
     } else {
-      await runDocumenter({ result: ctx.result, cwd: ctx.cwd }, logger, runner, deps.onProgress);
+      await runDocumenter({ result: ctx.result, cwd: ctx.cwd }, logger, getRunner(ctx), deps.onProgress);
     }
     logger.info("Documentation check completed");
     await git.addAll(ctx.cwd);
@@ -329,7 +328,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const fix = await runFixer(
       { plan: ctx.plan, ciLog, cwd: ctx.cwd },
       logger,
-      runner,
+      getRunner(ctx),
       deps.onProgress
     );
     const fixElapsed = Math.round(performance.now() - fixStart);

@@ -110,7 +110,7 @@ function detectRepo(cwd: string): string {
 function resolveBackendConfig(opts: { backend?: string; model?: string }): BackendConfig {
   return {
     backend: opts.backend ?? process.env.AIDEV_BACKEND ?? DEFAULT_BACKEND,
-    model: opts.model ?? process.env.AIDEV_MODEL ?? undefined,
+    model: opts.model ?? process.env.AIDEV_MODEL,
   };
 }
 
