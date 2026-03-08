@@ -1,3 +1,7 @@
+import { writeFile, unlink } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 import { execa } from "execa";
 import type { AgentRunner, AgentRunOptions } from "./runner.js";
 import type { BackendConfig } from "./backend-config.js";
@@ -26,15 +30,28 @@ export class CodexCliRunner implements AgentRunner {
       args.push("--model", this.config.model);
     }
 
+    let schemaPath: string | undefined;
+    if (options.outputSchema) {
+      schemaPath = join(tmpdir(), `aidev-schema-${randomBytes(8).toString("hex")}.json`);
+      await writeFile(schemaPath, JSON.stringify(options.outputSchema), "utf-8");
+      args.push("--output-schema", schemaPath);
+    }
+
     args.push("--", prompt);
 
-    const { stdout, stderr } = await execa("codex", args, {
-      cwd: options.cwd,
-      timeout: 600_000,
-    });
-    if (stderr) {
-      options.logger.debug("codex stderr", { stderr });
+    try {
+      const { stdout, stderr } = await execa("codex", args, {
+        cwd: options.cwd,
+        timeout: 600_000,
+      });
+      if (stderr) {
+        options.logger.debug("codex stderr", { stderr });
+      }
+      return stdout;
+    } finally {
+      if (schemaPath) {
+        await unlink(schemaPath).catch(() => {});
+      }
     }
-    return stdout;
   }
 }

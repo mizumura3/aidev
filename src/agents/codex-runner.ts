@@ -34,7 +34,9 @@ export class CodexRunner implements AgentRunner {
     });
 
     if (options.onMessage) {
-      const { events } = await thread.runStreamed(prompt);
+      const { events } = await thread.runStreamed(prompt, {
+        ...(options.outputSchema && { outputSchema: options.outputSchema }),
+      });
       // Keep the last agent_message as the final response
       let finalResponse = "";
       const iterator = events[Symbol.asyncIterator]();
@@ -56,7 +58,9 @@ export class CodexRunner implements AgentRunner {
       return finalResponse;
     } else {
       const turn = await withTimeout(
-        thread.run(prompt),
+        thread.run(prompt, {
+          ...(options.outputSchema && { outputSchema: options.outputSchema }),
+        }),
         RUN_TIMEOUT_MS,
       );
       return turn.finalResponse;

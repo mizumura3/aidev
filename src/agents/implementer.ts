@@ -1,5 +1,6 @@
 import { ResultSchema, type Plan, type Result } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import { resultJsonSchema } from "./schemas.js";
 import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
@@ -70,6 +71,7 @@ Output ONLY valid JSON, no markdown fences.`;
     logger,
     maxTurns: 50,
     onMessage,
+    outputSchema: resultJsonSchema,
   });
 
   const parsed = extractJson(resultText, "Implementer");

@@ -12,6 +12,7 @@ export interface AgentRunOptions {
   allowedTools?: string[];
   maxTurns?: number;
   onMessage?: (message: ProgressEvent) => void;
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface AgentRunner {

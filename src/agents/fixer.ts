@@ -1,5 +1,6 @@
 import { FixSchema, type Fix, type Plan } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import { fixJsonSchema } from "./schemas.js";
 import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
@@ -62,6 +63,7 @@ Output ONLY valid JSON, no markdown fences.`;
     logger,
     maxTurns: 30,
     onMessage,
+    outputSchema: fixJsonSchema,
   });
 
   const parsed = extractJson(resultText, "Fixer");

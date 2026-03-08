@@ -159,6 +159,23 @@ describe("runPlanner prompt", () => {
     );
   });
 
+  it("passes planJsonSchema as outputSchema to runner", async () => {
+    const { mockRunner } = setupMocks();
+
+    await runPlanner(
+      { issue: { number: 1, title: "T", body: "B", labels: [] }, cwd: "/tmp", language: "ja" },
+      noopLogger as any,
+      mockRunner
+    );
+
+    expect(mockRunner.run).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        outputSchema: expect.objectContaining({ type: "object" }),
+      })
+    );
+  });
+
   it("includes explicit output language instruction", async () => {
     const { getPrompt, mockRunner } = setupMocks();
 

@@ -1,5 +1,6 @@
 import { ReviewSchema, type Plan, type Review } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import { reviewJsonSchema } from "./schemas.js";
 import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
 
@@ -72,6 +73,7 @@ Output ONLY valid JSON, no markdown fences.`;
     allowedTools: ["Read", "Glob", "Grep", "Bash"],
     maxTurns: 20,
     onMessage,
+    outputSchema: reviewJsonSchema,
   });
 
   const parsed = extractJson(resultText, "Reviewer");

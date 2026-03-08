@@ -1,5 +1,6 @@
 import { PlanSchema, type Plan } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import { planJsonSchema } from "./schemas.js";
 import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Issue } from "../adapters/github.js";
 import type { Logger } from "../util/logger.js";
@@ -51,6 +52,7 @@ Your final message must contain ONLY the JSON object, nothing else.`;
     allowedTools: ["Read", "Glob", "Grep", "Bash"],
     maxTurns: 20,
     onMessage,
+    outputSchema: planJsonSchema,
   });
 
   logger.info("Planner response", { length: resultText.length });

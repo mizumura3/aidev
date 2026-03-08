@@ -120,4 +120,26 @@ describe("CodexCliRunner", () => {
 
     expect(opts.logger.warn).toHaveBeenCalledWith("codex-cli backend does not support allowedTools");
   });
+
+  it("includes --output-schema flag when outputSchema is provided", async () => {
+    mockExeca.mockResolvedValueOnce({ stdout: "ok", stderr: "" });
+
+    const runner = new CodexCliRunner({});
+    await runner.run("hello", makeOptions({ outputSchema: { type: "object", properties: {} } }));
+
+    const args = mockExeca.mock.calls[0]![1] as string[];
+    expect(args).toContain("--output-schema");
+    const idx = args.indexOf("--output-schema");
+    expect(args[idx + 1]).toMatch(/aidev-schema-.*\.json$/);
+  });
+
+  it("does not include --output-schema flag when outputSchema is not set", async () => {
+    mockExeca.mockResolvedValueOnce({ stdout: "ok", stderr: "" });
+
+    const runner = new CodexCliRunner({});
+    await runner.run("hello", makeOptions());
+
+    const args = mockExeca.mock.calls[0]![1] as string[];
+    expect(args).not.toContain("--output-schema");
+  });
 });

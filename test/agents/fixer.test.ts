@@ -126,6 +126,23 @@ describe("runFixer prompt", () => {
     expect(capturedPrompt).not.toContain("CI pipeline");
   });
 
+  it("passes fixJsonSchema as outputSchema to runner", async () => {
+    const { mockRunner } = setupMocks();
+
+    await runFixer(
+      { plan: samplePlan, ciLog: "log", cwd: "/tmp" },
+      noopLogger as any,
+      mockRunner
+    );
+
+    expect(mockRunner.run).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        outputSchema: expect.objectContaining({ type: "object" }),
+      })
+    );
+  });
+
   it("uses CI log prompt when ciLog is provided", async () => {
     const { getPrompt, mockRunner } = setupMocks();
 

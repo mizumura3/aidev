@@ -4,8 +4,12 @@ import type { AgentRunner, AgentRunOptions } from "./runner.js";
 
 export class ClaudeCodeRunner implements AgentRunner {
   async run(prompt: string, options: AgentRunOptions): Promise<string> {
+    const effectivePrompt = options.outputSchema
+      ? `${prompt}\n\nYou MUST respond with JSON matching this JSON Schema:\n${JSON.stringify(options.outputSchema, null, 2)}`
+      : prompt;
+
     const response = query({
-      prompt,
+      prompt: effectivePrompt,
       options: {
         ...getBaseSdkOptions(),
         cwd: options.cwd,

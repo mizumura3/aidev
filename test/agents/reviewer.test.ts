@@ -117,6 +117,27 @@ describe("runReviewer", () => {
     expect(prompt).toContain('"needs_discussion"');
   });
 
+  it("passes reviewJsonSchema as outputSchema to runner", async () => {
+    const runner: AgentRunner = {
+      run: vi.fn(async () =>
+        JSON.stringify({
+          decision: "approve",
+          mustFix: [],
+          summary: "LGTM",
+        })
+      ),
+    };
+
+    await runReviewer(makeInput(), makeLogger(), runner);
+
+    expect(runner.run).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        outputSchema: expect.objectContaining({ type: "object" }),
+      })
+    );
+  });
+
   it("includes explicit output language instruction", async () => {
     const runner: AgentRunner = {
       run: vi.fn(async () =>

@@ -124,7 +124,7 @@ describe("CodexRunner", () => {
 
     const result = await runner.run("hello", makeOptions());
 
-    expect(mockRun).toHaveBeenCalledWith(expect.any(String));
+    expect(mockRun).toHaveBeenCalledWith(expect.any(String), expect.any(Object));
     expect(result).toBe("sync result");
   });
 
@@ -174,5 +174,39 @@ describe("CodexRunner", () => {
     const result = await runner.run("hello", makeOptions({ onMessage }));
 
     expect(result).toBe("");
+  });
+
+  it("passes outputSchema to thread.run() when provided", async () => {
+    const runner = new CodexRunner({});
+    const schema = { type: "object", properties: { foo: { type: "string" } } };
+    mockRun.mockResolvedValueOnce({ finalResponse: "ok", items: [], usage: null });
+
+    await runner.run("hello", makeOptions({ outputSchema: schema }));
+
+    expect(mockRun).toHaveBeenCalledWith("hello", { outputSchema: schema });
+  });
+
+  it("passes outputSchema to thread.runStreamed() when provided", async () => {
+    const onMessage = vi.fn();
+    const runner = new CodexRunner({});
+    const schema = { type: "object", properties: { foo: { type: "string" } } };
+
+    async function* fakeEvents() {
+      yield { type: "turn.completed" as const, usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } };
+    }
+    mockRunStreamed.mockResolvedValueOnce({ events: fakeEvents() });
+
+    await runner.run("hello", makeOptions({ onMessage, outputSchema: schema }));
+
+    expect(mockRunStreamed).toHaveBeenCalledWith("hello", { outputSchema: schema });
+  });
+
+  it("does not pass outputSchema when not provided", async () => {
+    const runner = new CodexRunner({});
+    mockRun.mockResolvedValueOnce({ finalResponse: "ok", items: [], usage: null });
+
+    await runner.run("hello", makeOptions());
+
+    expect(mockRun).toHaveBeenCalledWith("hello", {});
   });
 });
