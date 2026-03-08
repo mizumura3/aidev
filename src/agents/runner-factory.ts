@@ -8,7 +8,6 @@ type RunnerFactory = (config: BackendConfig) => AgentRunner;
 
 const registry = new Map<string, RunnerFactory>();
 
-// TODO(#82): pass config.model to the runner when model selection is supported
 registry.set("claude-code", (config) => {
   if (config.model) {
     console.warn(`claude-code backend does not yet support model selection (got "${config.model}")`);
