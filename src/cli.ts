@@ -175,6 +175,7 @@ export function createCli() {
           ...saved,
           dryRun: opts.dryRun,
           autoMerge: opts.autoMerge,
+          language: saved.language ?? "ja",
         };
         // If previous run completed as done (dry-run), restart from creating_pr
         // (commit already exists, just need push + PR)
@@ -262,6 +263,7 @@ export function createCli() {
           reviewRound: 0,
           dryRun: opts.dryRun,
           autoMerge: opts.autoMerge,
+          language: "ja",
           issueLabels: [],
           skipStates: [],
           skipAuthorCheck: opts.allowForeignIssues,
@@ -448,6 +450,7 @@ export function createCli() {
                 reviewRound: 0,
                 dryRun: false,
                 autoMerge: false,
+                language: "ja",
                 issueLabels: issue.labels,
                 skipStates: [],
                 skipAuthorCheck: false,

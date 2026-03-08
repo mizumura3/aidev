@@ -11,6 +11,7 @@ describe("generateAidevYml", () => {
     expect(content).toContain("autoMerge: false");
     expect(content).toContain("dryRun: false");
     expect(content).toContain("base: main");
+    expect(content).toContain("language: ja");
     expect(content).toContain("# skip:");
   });
 });

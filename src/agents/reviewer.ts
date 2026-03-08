@@ -2,11 +2,13 @@ import { ReviewSchema, type Plan, type Review } from "../types.js";
 import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
 import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Logger } from "../util/logger.js";
+import type { Language } from "../types.js";
 
 export interface ReviewerInput {
   plan: Plan;
   diff: string;
   cwd: string;
+  language: Language;
 }
 
 export interface ReviewRoundInfo {
@@ -57,9 +59,15 @@ Respond ONLY with a JSON object:
 
 Output ONLY valid JSON, no markdown fences.`;
 
+  const promptWithLanguage = `${prompt}
+
+Output language: ${input.language}
+- Write all natural language fields (\`summary\`, \`mustFix\`, and \`reason\` when present) in this language.
+`;
+
   logger.info("Running reviewer agent", roundInfo ? { round: roundInfo.reviewRound } : {});
 
-  const resultText = await runner.run(prompt, {
+  const resultText = await runner.run(promptWithLanguage, {
     cwd: input.cwd,
     agentName: "Reviewer",
     logger,

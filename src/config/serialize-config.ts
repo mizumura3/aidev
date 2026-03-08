@@ -7,6 +7,7 @@ export function serializeConfig(config: ResolvedConfig): string {
     `autoMerge: ${config.autoMerge}`,
     `dryRun: ${config.dryRun}`,
     `base: ${config.base}`,
+    `language: ${config.language}`,
   ];
 
   if (config.backend) {

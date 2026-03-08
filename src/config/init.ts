@@ -9,6 +9,7 @@ maxFixAttempts: 3
 autoMerge: false
 dryRun: false
 base: main
+language: ja
 # skip:
 #   - reviewing
 #   - watching_ci

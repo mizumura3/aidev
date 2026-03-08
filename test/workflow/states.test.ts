@@ -50,6 +50,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     reviewRound: 0,
     dryRun: false,
     autoMerge: false,
+    language: "ja",
     issueLabels: [],
     skipStates: [],
     base: "main",
@@ -328,7 +329,7 @@ describe("init handler", () => {
 
   it("applies .aidev.yml repo config to ctx", async () => {
     const deps = makeDeps({
-      loadRepoConfig: vi.fn(async () => ({ base: "develop", autoMerge: true })),
+      loadRepoConfig: vi.fn(async () => ({ base: "develop", autoMerge: true, language: "en" })),
     });
     const handlers = createStateHandlers(deps);
     const ctx = makeCtx();
@@ -337,6 +338,28 @@ describe("init handler", () => {
 
     expect(result.ctx.base).toBe("develop");
     expect(result.ctx.autoMerge).toBe(true);
+    expect(result.ctx.language).toBe("en");
+  });
+
+  it("body config language overrides repo config language", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ language: "en" })),
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nlanguage: ja\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.language).toBe("ja");
   });
 
   it("issue config overrides repo config", async () => {
@@ -392,6 +415,10 @@ describe("init handler", () => {
     expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
       1,
       expect.stringContaining("```aidev"),
+    );
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("language: ja"),
     );
   });
 
@@ -1197,7 +1224,7 @@ describe("reviewing handler", () => {
     const comment = (deps.github.commentOnPr as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
     expect(comment).not.toContain("NaN");
     expect(comment).not.toContain("null");
-    expect(comment).toContain("Round 1/1");
+    expect(comment).toContain("ラウンド 1/1");
   });
 });
 
@@ -1357,7 +1384,7 @@ describe("planning handler", () => {
 
     expect(deps.github.commentOnPr).toHaveBeenCalledWith(
       5,
-      expect.stringContaining("## 🔍 Investigation"),
+      expect.stringContaining("## 🔍 調査"),
     );
     expect(deps.github.commentOnIssue).not.toHaveBeenCalled();
   });

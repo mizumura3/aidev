@@ -7,6 +7,9 @@ export const SkippableStateSchema = z.enum([
 ]);
 export type SkippableState = z.infer<typeof SkippableStateSchema>;
 
+export const LanguageSchema = z.enum(["ja", "en"]);
+export type Language = z.infer<typeof LanguageSchema>;
+
 export const RunStateSchema = z.enum([
   "init",
   "planning",
@@ -77,6 +80,7 @@ export const RunContextSchema = z.object({
   reviewRound: z.number().default(0),
   dryRun: z.boolean(),
   autoMerge: z.boolean().default(false),
+  language: LanguageSchema.default("ja"),
   issueLabels: z.array(z.string()).default([]),
   skipAuthorCheck: z.boolean().default(false),
   skipStates: z.array(SkippableStateSchema).default([]),

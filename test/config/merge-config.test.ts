@@ -79,4 +79,15 @@ describe("mergeConfigs", () => {
     expect(result).not.toHaveProperty("backend");
     expect(result).not.toHaveProperty("model");
   });
+
+  it("merges language and respects cli-explicit", () => {
+    const repo: Partial<IssueConfig> = { language: "en" };
+    const issue: Partial<IssueConfig> = { language: "ja" };
+
+    const merged = mergeConfigs(repo, issue, new Set());
+    expect(merged.language).toBe("ja");
+
+    const cliMerged = mergeConfigs(repo, issue, new Set(["language"]));
+    expect(cliMerged).not.toHaveProperty("language");
+  });
 });

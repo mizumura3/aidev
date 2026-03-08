@@ -3,10 +3,12 @@ import { extractJson, INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./s
 import type { AgentRunner, ProgressEvent } from "./runner.js";
 import type { Issue } from "../adapters/github.js";
 import type { Logger } from "../util/logger.js";
+import type { Language } from "../types.js";
 
 export interface PlannerInput {
   issue: Issue;
   cwd: string;
+  language: Language;
 }
 
 export async function runPlanner(
@@ -35,9 +37,15 @@ Format rules for the "investigation" field:
 
 Your final message must contain ONLY the JSON object, nothing else.`;
 
+  const promptWithLanguage = `${prompt}
+
+Output language: ${input.language}
+- Write all natural language fields in this language.
+`;
+
   logger.info("Running planner agent", { issue: input.issue.number });
 
-  const resultText = await runner.run(prompt, {
+  const resultText = await runner.run(promptWithLanguage, {
     cwd: input.cwd,
     agentName: "Planner",
     logger,

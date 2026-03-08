@@ -1,5 +1,5 @@
 import type { AgentRunner, ProgressEvent } from "../agents/runner.js";
-import type { StateHandler, RunContext, RunState, Review } from "../types.js";
+import type { StateHandler, RunContext, RunState, Review, Language } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
 import type { GitHubAdapter } from "../adapters/github.js";
@@ -45,36 +45,39 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
 
 const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
 
-function formatReviewComment(review: Review, round: number, maxRounds: number): string {
-  const header = `Round ${round}/${maxRounds ?? 1}`;
+function formatReviewComment(review: Review, round: number, maxRounds: number, language: Language): string {
+  const header = language === "ja" ? `ラウンド ${round}/${maxRounds ?? 1}` : `Round ${round}/${maxRounds ?? 1}`;
+  const isJa = language === "ja";
 
   if (review.decision === "needs_discussion") {
     const reason = review.reason ?? review.summary;
     return [
-      `## ⚠️ Review Blocked (${header})`,
+      `${isJa ? "## ⚠️ レビュー保留" : "## ⚠️ Review Blocked"} (${header})`,
       "",
       reason,
       "",
       "---",
-      "This issue has been flagged for human review. Please update the approach and re-run `aidev run`.",
+      isJa
+        ? "このIssueは人間による確認が必要として保留されました。方針を見直して `aidev run` を再実行してください。"
+        : "This issue has been flagged for human review. Please update the approach and re-run `aidev run`.",
     ].join("\n");
   }
 
   if (review.decision === "changes_requested") {
     const lines = [
-      `## 🔧 Changes Requested (${header})`,
+      `${isJa ? "## 🔧 修正依頼" : "## 🔧 Changes Requested"} (${header})`,
       "",
       review.summary,
     ];
     if (review.mustFix.length > 0) {
-      lines.push("", "### Must Fix", ...review.mustFix.map((item) => `- ${item}`));
+      lines.push("", isJa ? "### 必須修正" : "### Must Fix", ...review.mustFix.map((item) => `- ${item}`));
     }
     return lines.join("\n");
   }
 
   // approve
   return [
-    `## ✅ Review Approved (${header})`,
+    `${isJa ? "## ✅ レビュー承認" : "## ✅ Review Approved"} (${header})`,
     "",
     review.summary,
   ].join("\n");
@@ -127,6 +130,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (merged.autoMerge !== undefined) patch.autoMerge = merged.autoMerge;
     if (merged.dryRun !== undefined) patch.dryRun = merged.dryRun;
     if (merged.base !== undefined) patch.base = merged.base;
+    if (merged.language !== undefined) patch.language = merged.language;
     if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
 
     // Re-create runner if backend/model changed via config
@@ -151,6 +155,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       autoMerge: mergedCtx.autoMerge,
       dryRun: mergedCtx.dryRun,
       base: mergedCtx.base,
+      language: mergedCtx.language ?? "ja",
       skip: (mergedCtx.skipStates ?? []) as SkippableState[],
       backend: merged.backend,
       model: merged.model,
@@ -237,12 +242,15 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         ? toPlanningTarget(await github.getPr(ctx.prNumber!))
         : await github.getIssue(ctx.issueNumber!);
     const planStart = performance.now();
-    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd }, logger, getRunner(ctx), deps.onProgress);
+    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd, language: ctx.language ?? "ja" }, logger, getRunner(ctx), deps.onProgress);
     const planElapsed = Math.round(performance.now() - planStart);
     logger.info("Plan created", { summary: plan.summary, agentElapsedMs: planElapsed });
 
     if (plan.investigation) {
-      const comment = `## 🔍 Investigation\n\n${plan.investigation}\n\n## Plan\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+      const isJa = (ctx.language ?? "ja") === "ja";
+      const investigationHeading = isJa ? "## 🔍 調査" : "## 🔍 Investigation";
+      const planHeading = isJa ? "## 計画" : "## Plan";
+      const comment = `${investigationHeading}\n\n${plan.investigation}\n\n${planHeading}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
       if (ctx.targetKind === "pr") {
         await github.commentOnPr(ctx.prNumber!, comment);
         logger.info("Posted investigation to PR", { pr: ctx.prNumber });
@@ -289,7 +297,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const maxRounds = ctx.maxReviewRounds ?? 1;
     const reviewStart = performance.now();
     const review = await runReviewer(
-      { plan: ctx.plan, diff, cwd: ctx.cwd },
+      { plan: ctx.plan, diff, cwd: ctx.cwd, language: ctx.language ?? "ja" },
       logger,
       getRunner(ctx),
       deps.onProgress,
@@ -306,7 +314,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const patch: Partial<RunContext> = { review, reviewRound: currentRound };
 
     // Post review result as PR comment
-    const comment = formatReviewComment(review, currentRound, maxRounds);
+    const comment = formatReviewComment(review, currentRound, maxRounds, ctx.language ?? "ja");
     await github.commentOnPr(ctx.prNumber, comment);
     logger.info("Posted review comment to PR", { pr: ctx.prNumber, decision: review.decision, round: currentRound });
 

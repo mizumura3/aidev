@@ -167,6 +167,7 @@ describe("RunContextSchema", () => {
     reviewRound: 0,
     dryRun: false,
     autoMerge: false,
+    language: "ja",
     issueLabels: [],
     skipAuthorCheck: false,
     skipStates: [],
@@ -233,6 +234,12 @@ describe("RunContextSchema", () => {
     const { autoMerge, ...rest } = validContext;
     const parsed = RunContextSchema.parse(rest);
     expect(parsed.autoMerge).toBe(false);
+  });
+
+  it("defaults language to ja", () => {
+    const { language, ...rest } = validContext;
+    const parsed = RunContextSchema.parse(rest);
+    expect(parsed.language).toBe("ja");
   });
 
   it("defaults issueLabels to empty array", () => {

@@ -105,6 +105,7 @@ describe("run command preflight", () => {
         fixAttempts: 0,
         dryRun: false,
         autoMerge: false,
+        language: "ja",
         issueLabels: [],
         skipAuthorCheck: false,
         skipStates: [],

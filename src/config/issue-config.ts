@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SkippableStateSchema } from "../types.js";
+import { SkippableStateSchema, LanguageSchema } from "../types.js";
 import type { SkippableState } from "../types.js";
 
 export type { SkippableState } from "../types.js";
@@ -14,6 +14,7 @@ const IssueConfigSchema = z
     skip: z.array(SkippableStateSchema).optional(),
     backend: z.string().optional(),
     model: z.string().optional(),
+    language: LanguageSchema.optional(),
   })
   .strict();
 
@@ -28,6 +29,7 @@ export interface ResolvedConfig {
   skip: SkippableState[];
   backend?: string;
   model?: string;
+  language: "ja" | "en";
 }
 
 /**
@@ -104,6 +106,13 @@ function toNumber(value: string): number | undefined {
   return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
+function toLanguage(value: string): "ja" | "en" | undefined {
+  const normalized = value.toLowerCase();
+  return LanguageSchema.safeParse(normalized).success
+    ? (normalized as "ja" | "en")
+    : undefined;
+}
+
 /**
  * Parse a YAML-like config block string into a partial IssueConfig.
  * Shared by issue body parser and .aidev.yml loader.
@@ -142,6 +151,11 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
 
   if (typeof raw.model === "string" && raw.model.length > 0) {
     obj.model = raw.model;
+  }
+
+  if (typeof raw.language === "string" && raw.language.length > 0) {
+    const language = toLanguage(raw.language);
+    if (language !== undefined) obj.language = language;
   }
 
   if (Array.isArray(raw.skip)) {
