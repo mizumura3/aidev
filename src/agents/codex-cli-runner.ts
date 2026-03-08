@@ -13,10 +13,10 @@ export class CodexCliRunner implements AgentRunner {
   }
 
   async run(prompt: string, options: AgentRunOptions): Promise<string> {
-    if (options.maxTurns) {
+    if (options.maxTurns !== undefined) {
       options.logger.warn("codex-cli backend does not support maxTurns");
     }
-    if (options.allowedTools) {
+    if (options.allowedTools !== undefined) {
       options.logger.warn("codex-cli backend does not support allowedTools");
     }
 

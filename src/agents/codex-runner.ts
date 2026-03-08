@@ -2,7 +2,8 @@ import { Codex } from "@openai/codex-sdk";
 import type { AgentRunner, AgentRunOptions } from "./runner.js";
 import type { BackendConfig } from "./backend-config.js";
 
-const DEFAULT_STREAM_TIMEOUT_MS = 120_000;
+const PER_EVENT_TIMEOUT_MS = 120_000;
+const RUN_TIMEOUT_MS = 600_000;
 
 // Note: Codex SDK manages its own sandbox via sandboxMode.
 // The safety hooks in shared.ts (blockDangerousOps) are
@@ -19,10 +20,10 @@ export class CodexRunner implements AgentRunner {
   }
 
   async run(prompt: string, options: AgentRunOptions): Promise<string> {
-    if (options.maxTurns) {
+    if (options.maxTurns !== undefined) {
       options.logger.warn("codex-sdk backend does not support maxTurns");
     }
-    if (options.allowedTools) {
+    if (options.allowedTools !== undefined) {
       options.logger.warn("codex-sdk backend does not support allowedTools");
     }
 
@@ -40,7 +41,7 @@ export class CodexRunner implements AgentRunner {
       while (true) {
         const next = await withTimeout(
           iterator.next(),
-          DEFAULT_STREAM_TIMEOUT_MS,
+          PER_EVENT_TIMEOUT_MS,
         );
         if (next.done) break;
         const event = next.value;
@@ -56,7 +57,7 @@ export class CodexRunner implements AgentRunner {
     } else {
       const turn = await withTimeout(
         thread.run(prompt),
-        DEFAULT_STREAM_TIMEOUT_MS,
+        RUN_TIMEOUT_MS,
       );
       return turn.finalResponse;
     }
@@ -67,7 +68,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(
-      () => reject(new Error(`Codex stream timed out after ${ms}ms`)),
+      () => reject(new Error(`Codex timed out after ${ms}ms`)),
       ms,
     );
   });
