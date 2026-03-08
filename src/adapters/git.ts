@@ -23,11 +23,25 @@ export function createGitAdapter(): GitAdapter {
     },
 
     async commit(message, cwd) {
-      await execa("git", ["commit", "-m", message], { cwd });
+      try {
+        await execa("git", ["commit", "-m", message], { cwd });
+      } catch (err: any) {
+        if (typeof err.stdout === "string" && err.stdout.includes("nothing to commit")) {
+          return;
+        }
+        throw err;
+      }
     },
 
     async push(branch, cwd) {
-      await execa("git", ["push", "-u", "origin", branch], { cwd });
+      try {
+        await execa("git", ["push", "-u", "origin", branch], { cwd });
+      } catch (err: any) {
+        if (typeof err.stderr === "string" && err.stderr.includes("Everything up-to-date")) {
+          return;
+        }
+        throw err;
+      }
     },
 
     async diff(base, cwd) {

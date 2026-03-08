@@ -76,6 +76,28 @@ describe("GitAdapter", () => {
         { cwd }
       );
     });
+
+    it("silently succeeds when nothing to commit", async () => {
+      const error = Object.assign(new Error("Command failed"), {
+        exitCode: 1,
+        stdout: "On branch main\nnothing to commit, working tree clean\n",
+        stderr: "",
+      });
+      mockExeca.mockRejectedValueOnce(error);
+      await expect(git.commit("feat: add X", cwd)).resolves.toBeUndefined();
+    });
+
+    it("re-throws genuine git errors", async () => {
+      const error = Object.assign(new Error("Command failed"), {
+        exitCode: 128,
+        stdout: "",
+        stderr: "fatal: Unable to create '.git/index.lock': File exists.",
+      });
+      mockExeca.mockRejectedValueOnce(error);
+      await expect(git.commit("feat: add X", cwd)).rejects.toThrow(
+        "Command failed"
+      );
+    });
   });
 
   describe("push", () => {
@@ -85,6 +107,28 @@ describe("GitAdapter", () => {
         "git",
         ["push", "-u", "origin", "feature/x"],
         { cwd }
+      );
+    });
+
+    it("silently succeeds when everything up-to-date", async () => {
+      const error = Object.assign(new Error("Command failed"), {
+        exitCode: 1,
+        stdout: "",
+        stderr: "Everything up-to-date\n",
+      });
+      mockExeca.mockRejectedValueOnce(error);
+      await expect(git.push("feature/x", cwd)).resolves.toBeUndefined();
+    });
+
+    it("re-throws genuine push errors", async () => {
+      const error = Object.assign(new Error("Command failed"), {
+        exitCode: 128,
+        stdout: "",
+        stderr: "fatal: Authentication failed",
+      });
+      mockExeca.mockRejectedValueOnce(error);
+      await expect(git.push("feature/x", cwd)).rejects.toThrow(
+        "Command failed"
       );
     });
   });
