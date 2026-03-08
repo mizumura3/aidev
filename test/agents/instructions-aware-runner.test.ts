@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InstructionsAwareRunner } from "../../src/agents/instructions-aware-runner.js";
 import type { AgentRunner, AgentRunOptions } from "../../src/agents/runner.js";
 
@@ -21,6 +21,10 @@ const baseOptions: AgentRunOptions = {
 };
 
 describe("InstructionsAwareRunner", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("prepends instructions to the prompt", async () => {
     const inner = createMockRunner();
     const runner = new InstructionsAwareRunner(inner, "Do this and that.");
@@ -85,5 +89,16 @@ describe("InstructionsAwareRunner", () => {
     await runner.run("Prompt", baseOptions);
 
     expect(inner.run).toHaveBeenCalledWith("Prompt", baseOptions);
+  });
+
+  it("caches lazy-loaded instructions per cwd", async () => {
+    vi.mocked(loadProjectInstructions).mockResolvedValue("cached instructions");
+    const inner = createMockRunner();
+    const runner = new InstructionsAwareRunner(inner);
+
+    await runner.run("Prompt1", { ...baseOptions, cwd: "/project-a" });
+    await runner.run("Prompt2", { ...baseOptions, cwd: "/project-a" });
+
+    expect(loadProjectInstructions).toHaveBeenCalledTimes(1);
   });
 });
