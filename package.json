@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.128",
+    "@openai/codex-sdk": "^0.111.0",
     "commander": "^12",
     "execa": "^9",
     "zod": "^3.24"

@@ -129,6 +129,16 @@ export AIDEV_BACKEND=claude-code
 export AIDEV_MODEL=claude-sonnet-4-6
 ```
 
+利用可能なバックエンド:
+
+| バックエンド | 説明 | `--model` |
+|-------------|------|-----------|
+| `claude-code`（デフォルト） | Claude Code SDK を使用 | 未対応 |
+| `codex-cli` | `codex exec` コマンドをローカルで実行（API キー不要） | 対応 |
+| `codex-sdk` | OpenAI Codex SDK (`@openai/codex-sdk`) を使用 | 対応 |
+
+`codex-sdk` バックエンドは `OPENAI_API_KEY` 環境変数（または `apiKey` 設定）が必要。`codex-cli` バックエンドはローカルにインストールされた `codex` CLI を使用する。
+
 ### `watch` — ラベル付き Issue を監視して自動処理
 
 ```bash

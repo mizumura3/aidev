@@ -1,6 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InstructionsAwareRunner } from "../../src/agents/instructions-aware-runner.js";
 import type { AgentRunner, AgentRunOptions } from "../../src/agents/runner.js";
+
+vi.mock("../../src/agents/instructions-loader.js", () => ({
+  loadProjectInstructions: vi.fn(async () => "lazy loaded instructions"),
+}));
+
+import { loadProjectInstructions } from "../../src/agents/instructions-loader.js";
 
 function createMockRunner(): AgentRunner & { run: ReturnType<typeof vi.fn> } {
   return {
@@ -15,6 +21,10 @@ const baseOptions: AgentRunOptions = {
 };
 
 describe("InstructionsAwareRunner", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("prepends instructions to the prompt", async () => {
     const inner = createMockRunner();
     const runner = new InstructionsAwareRunner(inner, "Do this and that.");
@@ -57,5 +67,38 @@ describe("InstructionsAwareRunner", () => {
 
     const result = await runner.run("Prompt", baseOptions);
     expect(result).toBe("inner result");
+  });
+
+  it("loads instructions lazily from cwd when no static instructions provided", async () => {
+    const inner = createMockRunner();
+    const runner = new InstructionsAwareRunner(inner);
+
+    await runner.run("Prompt", { ...baseOptions, cwd: "/my/project" });
+
+    expect(loadProjectInstructions).toHaveBeenCalledWith("/my/project");
+    const actualPrompt = inner.run.mock.calls[0][0] as string;
+    expect(actualPrompt).toContain("lazy loaded instructions");
+    expect(actualPrompt).toContain("Prompt");
+  });
+
+  it("passes through when lazy-loaded instructions are empty", async () => {
+    vi.mocked(loadProjectInstructions).mockResolvedValueOnce("");
+    const inner = createMockRunner();
+    const runner = new InstructionsAwareRunner(inner);
+
+    await runner.run("Prompt", baseOptions);
+
+    expect(inner.run).toHaveBeenCalledWith("Prompt", baseOptions);
+  });
+
+  it("caches lazy-loaded instructions per cwd", async () => {
+    vi.mocked(loadProjectInstructions).mockResolvedValue("cached instructions");
+    const inner = createMockRunner();
+    const runner = new InstructionsAwareRunner(inner);
+
+    await runner.run("Prompt1", { ...baseOptions, cwd: "/project-a" });
+    await runner.run("Prompt2", { ...baseOptions, cwd: "/project-a" });
+
+    expect(loadProjectInstructions).toHaveBeenCalledTimes(1);
   });
 });
