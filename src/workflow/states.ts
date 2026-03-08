@@ -100,6 +100,68 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     return runnerByRunId.get(ctx.runId) ?? defaultRunner;
   }
 
+  async function loadAndMergeConfig(
+    ctx: RunContext,
+    body: string,
+    patch: Partial<RunContext>,
+    workItemNumber: number,
+  ): Promise<{ patch: Partial<RunContext>; merged: Partial<IssueConfig> }> {
+    // Load repo-level config (.aidev.yml)
+    const repoConfig = await loadRepoConfig(ctx.cwd);
+    if (Object.keys(repoConfig).length > 0) {
+      logger.info("Loaded repo config", { repoConfig });
+    }
+
+    // Parse config from body (issue body or PR body)
+    const bodyConfig = parseIssueConfig(body);
+    if (Object.keys(bodyConfig).length > 0) {
+      logger.info("Parsed body config", { bodyConfig });
+    }
+
+    // Merge: repo < body, excluding CLI-explicit fields
+    const cliExplicit = ctx._cliExplicit ?? new Set<string>();
+    const merged = mergeConfigs(repoConfig, bodyConfig, cliExplicit);
+
+    if (merged.maxFixAttempts !== undefined) patch.maxFixAttempts = merged.maxFixAttempts;
+    if (merged.maxReviewRounds !== undefined) patch.maxReviewRounds = merged.maxReviewRounds;
+    if (merged.autoMerge !== undefined) patch.autoMerge = merged.autoMerge;
+    if (merged.dryRun !== undefined) patch.dryRun = merged.dryRun;
+    if (merged.base !== undefined) patch.base = merged.base;
+    if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
+
+    // Re-create runner if backend/model changed via config
+    if (merged.backend || merged.model) {
+      const resolved = deps.resolveRunner({
+        backend: merged.backend ?? DEFAULT_BACKEND,
+        model: merged.model,
+      });
+      runnerByRunId.set(ctx.runId, resolved);
+      logger.info("Switched backend from merged config", {
+        backend: merged.backend,
+        model: merged.model,
+      });
+    }
+
+    const mergedCtx = { ...ctx, ...patch };
+
+    // Build resolved config and write back to body
+    const resolvedConfig: ResolvedConfig = {
+      maxFixAttempts: mergedCtx.maxFixAttempts,
+      maxReviewRounds: mergedCtx.maxReviewRounds ?? 1,
+      autoMerge: mergedCtx.autoMerge,
+      dryRun: mergedCtx.dryRun,
+      base: mergedCtx.base,
+      skip: (mergedCtx.skipStates ?? []) as SkippableState[],
+      backend: merged.backend,
+      model: merged.model,
+    };
+    const configBlock = buildResolvedConfigBlock(resolvedConfig);
+    const updatedBody = upsertAidevBlock(body, configBlock);
+    await github.updateIssueBody(workItemNumber, updatedBody);
+
+    return { patch, merged };
+  }
+
   const init: StateHandler = async (ctx) => {
     if (ctx.targetKind === "pr") {
       const pr = await github.getPr(ctx.prNumber!);
@@ -125,7 +187,9 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         headBranch: pr.headRefName,
       };
 
-      const mergedCtx = { ...ctx, ...patch };
+      const result = await loadAndMergeConfig(ctx, pr.body, patch, pr.number);
+
+      const mergedCtx = { ...ctx, ...result.patch };
       await git.createBranch(
         mergedCtx.branch,
         `origin/${pr.headRefName}`,
@@ -153,63 +217,14 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       }
     }
 
-    // Load repo-level config (.aidev.yml)
-    const repoConfig = await loadRepoConfig(ctx.cwd);
-    if (Object.keys(repoConfig).length > 0) {
-      logger.info("Loaded repo config", { repoConfig });
-    }
-
-    // Parse issue config from body
-    const issueConfig = parseIssueConfig(issue.body);
-    if (Object.keys(issueConfig).length > 0) {
-      logger.info("Parsed issue config", { issueConfig });
-    }
-
-    // Merge: repo < issue, excluding CLI-explicit fields
-    const cliExplicit = ctx._cliExplicit ?? new Set<string>();
-    const merged = mergeConfigs(repoConfig, issueConfig, cliExplicit);
-
     const patch: Partial<RunContext> = {
       issueLabels: issue.labels,
       issueTitle: issue.title,
     };
 
-    if (merged.maxFixAttempts !== undefined) patch.maxFixAttempts = merged.maxFixAttempts;
-    if (merged.maxReviewRounds !== undefined) patch.maxReviewRounds = merged.maxReviewRounds;
-    if (merged.autoMerge !== undefined) patch.autoMerge = merged.autoMerge;
-    if (merged.dryRun !== undefined) patch.dryRun = merged.dryRun;
-    if (merged.base !== undefined) patch.base = merged.base;
-    if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
+    const result = await loadAndMergeConfig(ctx, issue.body, patch, issue.number);
 
-    // Re-create runner if backend/model changed via Issue or repo config
-    if (merged.backend || merged.model) {
-      const resolved = deps.resolveRunner({
-        backend: merged.backend ?? DEFAULT_BACKEND,
-        model: merged.model,
-      });
-      runnerByRunId.set(ctx.runId, resolved);
-      logger.info("Switched backend from merged config", {
-        backend: merged.backend,
-        model: merged.model,
-      });
-    }
-
-    const mergedCtx = { ...ctx, ...patch };
-
-    // Build resolved config and write back to issue body
-    const resolvedConfig: ResolvedConfig = {
-      maxFixAttempts: mergedCtx.maxFixAttempts,
-      maxReviewRounds: mergedCtx.maxReviewRounds ?? 1,
-      autoMerge: mergedCtx.autoMerge,
-      dryRun: mergedCtx.dryRun,
-      base: mergedCtx.base,
-      skip: (mergedCtx.skipStates ?? []) as SkippableState[],
-      backend: merged.backend,
-      model: merged.model,
-    };
-    const configBlock = buildResolvedConfigBlock(resolvedConfig);
-    const updatedBody = upsertAidevBlock(issue.body, configBlock);
-    await github.updateIssueBody(issue.number, updatedBody);
+    const mergedCtx = { ...ctx, ...result.patch };
 
     await git.createBranch(mergedCtx.branch, mergedCtx.base, mergedCtx.cwd);
     logger.info("Created branch", { branch: mergedCtx.branch });

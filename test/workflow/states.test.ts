@@ -455,7 +455,187 @@ describe("init handler", () => {
       "origin/feat/head",
       ctx.cwd
     );
-    expect(deps.github.updateIssueBody).not.toHaveBeenCalled();
+    // Resolved config is written back to PR body
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("```aidev"),
+    );
+  });
+
+  it("PR mode loads .aidev.yml and applies maxReviewRounds from repo config", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ maxReviewRounds: 3, autoMerge: true })),
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Test PR",
+          body: "PR body",
+          baseRefName: "main",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "main",
+    });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.maxReviewRounds).toBe(3);
+    expect(result.ctx.autoMerge).toBe(true);
+    expect(deps.loadRepoConfig).toHaveBeenCalledWith(ctx.cwd);
+  });
+
+  it("PR mode parses aidev block from PR body and merges into ctx", async () => {
+    const deps = makeDeps({
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Test PR",
+          body: "Some description\n```aidev\nmaxFixAttempts: 7\nautoMerge: true\nbase: release/2.0\nskip:\n  - reviewing\n```",
+          baseRefName: "main",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "main",
+    });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.maxFixAttempts).toBe(7);
+    expect(result.ctx.autoMerge).toBe(true);
+    expect(result.ctx.base).toBe("release/2.0");
+    expect(result.ctx.skipStates).toEqual(["reviewing"]);
+  });
+
+  it("PR mode respects CLI-explicit flags over repo/PR config", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ base: "develop" })),
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Test PR",
+          body: "```aidev\nbase: release/1.0\n```",
+          baseRefName: "main",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "cli-branch",
+      _cliExplicit: new Set(["base"]),
+    });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.base).toBe("cli-branch");
+  });
+
+  it("PR mode switches backend/model when config specifies them", async () => {
+    const deps = makeDeps({
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Test PR",
+          body: "```aidev\nbackend: openai\nmodel: gpt-4\n```",
+          baseRefName: "main",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "main",
+    });
+
+    await handlers.init!(ctx);
+
+    expect(deps.resolveRunner).toHaveBeenCalledWith({
+      backend: "openai",
+      model: "gpt-4",
+    });
+  });
+
+  it("PR mode writes resolved config back to PR body", async () => {
+    const deps = makeDeps({
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Test PR",
+          body: "PR description here",
+          baseRefName: "main",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "main",
+    });
+
+    await handlers.init!(ctx);
+
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("```aidev"),
+    );
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("PR description here"),
+    );
+  });
+
+  it("PR mode: pr.baseRefName is default, config base overrides it", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ base: "develop" })),
+      github: {
+        getPr: vi.fn(async () => ({
+          number: 5,
+          title: "Test PR",
+          body: "PR body",
+          baseRefName: "feat/base",
+          headRefName: "feat/head",
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      branch: "placeholder",
+      base: "main",
+    });
+
+    const result = await handlers.init!(ctx);
+
+    // repo config base overrides pr.baseRefName
+    expect(result.ctx.base).toBe("develop");
   });
 });
 

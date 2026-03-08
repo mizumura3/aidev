@@ -82,9 +82,9 @@ bun run aidev run --pr <number> --repo <owner/name> --cwd <path>
 - `--auto-merge` フラグを指定
 - Issue に `auto-merge` ラベルを付与
 
-#### Issue 本文でのワークフロー設定
+#### Issue / PR 本文でのワークフロー設定
 
-Issue 本文に ` ```aidev ` コードフェンスを記述することで、Issue ごとにワークフローパラメータを指定できる。
+Issue 本文または PR 本文に ` ```aidev ` コードフェンスを記述することで、ワークフローパラメータを指定できる。
 
 ````markdown
 ```aidev
@@ -113,7 +113,9 @@ skip:
 - `watching_ci` — CI 待ちをスキップ（reviewing → merging or done へ直行）
 - `documenter` — ドキュメント更新チェックをスキップ
 
-**優先順位**: CLI フラグ > Issue 本文 > `.aidev.yml` > 環境変数 > デフォルト値
+**優先順位**: CLI フラグ > Issue / PR 本文 > `.aidev.yml` > 環境変数 > デフォルト値
+
+PR モードでは `base` のデフォルトが PR の `baseRefName` となり、そこに上記の優先順位で上書きされる。
 
 #### バックエンド設定
 
