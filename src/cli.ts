@@ -299,10 +299,12 @@ export function createCli() {
       let lastKnownState = ctx.state;
 
       let exitCode = 0;
+      let worktreeCreated = false;
       try {
         // Remove stale worktree from a previous interrupted run, if any
         await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
         await git.addWorktree(worktreePath, ctx.base, originalCwd);
+        worktreeCreated = true;
         ctx.cwd = worktreePath;
         logger.info("Created worktree", { path: worktreePath, base: ctx.base });
 
@@ -377,12 +379,14 @@ export function createCli() {
         process.stdout.write(JSON.stringify(output) + "\n");
         exitCode = 1;
       } finally {
-        await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
-          logger.error("Worktree cleanup failed", {
-            path: worktreePath,
-            error: String(err),
-          })
-        );
+        if (worktreeCreated) {
+          await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
+            logger.error("Worktree cleanup failed", {
+              path: worktreePath,
+              error: String(err),
+            })
+          );
+        }
       }
       if (exitCode !== 0) process.exit(exitCode);
     });
