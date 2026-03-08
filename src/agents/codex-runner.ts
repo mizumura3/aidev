@@ -2,6 +2,11 @@ import { Codex } from "@openai/codex-sdk";
 import type { AgentRunner, AgentRunOptions } from "./runner.js";
 import type { BackendConfig } from "./backend-config.js";
 
+const DEFAULT_STREAM_TIMEOUT_MS = 120_000;
+
+// Note: Codex SDK manages its own sandbox via sandboxMode.
+// The safety hooks in shared.ts (blockDangerousOps) are
+// Claude Code-specific and not applicable here.
 export class CodexRunner implements AgentRunner {
   private readonly config: Partial<BackendConfig>;
   private readonly codex: Codex;
@@ -24,7 +29,14 @@ export class CodexRunner implements AgentRunner {
       const { events } = await thread.runStreamed(prompt);
       // Keep the last agent_message as the final response
       let finalResponse = "";
-      for await (const event of events) {
+      const iterator = events[Symbol.asyncIterator]();
+      while (true) {
+        const next = await withTimeout(
+          iterator.next(),
+          DEFAULT_STREAM_TIMEOUT_MS,
+        );
+        if (next.done) break;
+        const event = next.value;
         options.onMessage(event);
         if (event.type === "item.completed" && "item" in event) {
           const item = event.item;
@@ -39,4 +51,17 @@ export class CodexRunner implements AgentRunner {
       return turn.finalResponse;
     }
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error(`Codex stream timed out after ${ms}ms`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() =>
+    clearTimeout(timeoutHandle),
+  );
 }

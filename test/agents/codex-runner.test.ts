@@ -141,4 +141,18 @@ describe("CodexRunner", () => {
 
     expect(mockRunStreamed).toHaveBeenCalled();
   });
+
+  it("returns empty string when streaming yields no agent_message", async () => {
+    const onMessage = vi.fn();
+    const runner = new CodexRunner({});
+
+    async function* fakeEvents() {
+      yield { type: "turn.completed" as const, usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } };
+    }
+    mockRunStreamed.mockResolvedValueOnce({ events: fakeEvents() });
+
+    const result = await runner.run("hello", makeOptions({ onMessage }));
+
+    expect(result).toBe("");
+  });
 });
