@@ -46,7 +46,7 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
 const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
 
 function formatReviewComment(review: Review, round: number, maxRounds: number): string {
-  const header = `Round ${round}/${maxRounds}`;
+  const header = `Round ${round}/${maxRounds ?? 1}`;
 
   if (review.decision === "needs_discussion") {
     const reason = review.reason ?? review.summary;

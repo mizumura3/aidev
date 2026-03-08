@@ -995,6 +995,30 @@ describe("reviewing handler", () => {
 
     expect(result.nextState).toBe("watching_ci");
   });
+
+  it("does not render NaN in review comment when maxReviewRounds is null", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "approve",
+      mustFix: [],
+      summary: "LGTM",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      prNumber: 42,
+      maxReviewRounds: null as unknown as number,
+      plan: samplePlan,
+    });
+
+    await handlers.reviewing!(ctx);
+
+    const comment = (deps.github.commentOnPr as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    expect(comment).not.toContain("NaN");
+    expect(comment).not.toContain("null");
+    expect(comment).toContain("Round 1/1");
+  });
 });
 
 describe("reviewing handler — needs_discussion posts comment to PR", () => {
