@@ -271,19 +271,15 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     }
 
     if (review.decision === "changes_requested") {
+      if (currentRound >= maxRounds) {
+        logger.warn("Max review rounds reached, committing as-is", { round: currentRound, maxRounds });
+        return transition(ctx, "committing", patch);
+      }
       return transition(ctx, "implementing", patch);
     }
 
-    // approve
-    const isTrivial = review.severity === "trivial";
-    const isFinalRound = currentRound >= maxRounds;
-
-    if (isTrivial || isFinalRound) {
-      return transition(ctx, "committing", patch);
-    }
-
-    // More rounds remain — continue reviewing with fresh context
-    return transition(ctx, "reviewing", patch);
+    // approve — stop reviewing immediately
+    return transition(ctx, "committing", patch);
   };
 
   const committing: StateHandler = async (ctx) => {

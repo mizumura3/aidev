@@ -842,72 +842,13 @@ describe("reviewing handler", () => {
     expect(result.ctx.reviewRound).toBe(1);
   });
 
-  it("transitions to implementing when approved but more rounds remain", async () => {
+  it("transitions to committing immediately on approve regardless of remaining rounds", async () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "approve",
       severity: "significant",
       mustFix: [],
-      summary: "Round 1 OK, but keep reviewing",
-    });
-    const deps = makeDeps();
-    const handlers = createStateHandlers(deps);
-    const ctx = makeCtx({
-      state: "reviewing",
-      reviewRound: 0,
-      maxReviewRounds: 3,
-      plan: {
-        summary: "Do X",
-        steps: ["Step 1"],
-        filesToTouch: ["a.ts"],
-        tests: ["a.test.ts"],
-        risks: [],
-        acceptanceCriteria: ["X done"],
-      },
-    });
-
-    const result = await handlers.reviewing!(ctx);
-
-    // approve on round 1 of 3 with significant severity → continue reviewing
-    expect(result.nextState).toBe("reviewing");
-  });
-
-  it("transitions to committing when approved on final round", async () => {
-    const { runReviewer } = await import("../../src/agents/reviewer.js");
-    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      decision: "approve",
-      severity: "significant",
-      mustFix: [],
-      summary: "Final round OK",
-    });
-    const deps = makeDeps();
-    const handlers = createStateHandlers(deps);
-    const ctx = makeCtx({
-      state: "reviewing",
-      reviewRound: 2,
-      maxReviewRounds: 3,
-      plan: {
-        summary: "Do X",
-        steps: ["Step 1"],
-        filesToTouch: ["a.ts"],
-        tests: ["a.test.ts"],
-        risks: [],
-        acceptanceCriteria: ["X done"],
-      },
-    });
-
-    const result = await handlers.reviewing!(ctx);
-
-    expect(result.nextState).toBe("committing");
-  });
-
-  it("transitions to committing immediately for trivial approve", async () => {
-    const { runReviewer } = await import("../../src/agents/reviewer.js");
-    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      decision: "approve",
-      severity: "trivial",
-      mustFix: [],
-      summary: "Docs-only change",
+      summary: "LGTM",
     });
     const deps = makeDeps();
     const handlers = createStateHandlers(deps);
@@ -927,7 +868,37 @@ describe("reviewing handler", () => {
 
     const result = await handlers.reviewing!(ctx);
 
-    // trivial + approve → skip remaining rounds
+    // approve → committing immediately, no more rounds
+    expect(result.nextState).toBe("committing");
+  });
+
+  it("transitions to committing when changes_requested but max rounds reached", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "changes_requested",
+      severity: "significant",
+      mustFix: ["Fix naming"],
+      summary: "Needs work",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      reviewRound: 2,
+      maxReviewRounds: 3,
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    // max rounds reached, commit as-is even with changes_requested
     expect(result.nextState).toBe("committing");
   });
 
