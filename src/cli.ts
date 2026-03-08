@@ -107,6 +107,13 @@ function detectRepo(cwd: string): string {
   return process.env.DEVLOOP_REPO ?? "mizumura3/inko";
 }
 
+function resolveBackendConfig(opts: { backend?: string; model?: string }): BackendConfig {
+  return {
+    backend: opts.backend ?? process.env.AIDEV_BACKEND ?? DEFAULT_BACKEND,
+    model: opts.model ?? process.env.AIDEV_MODEL ?? undefined,
+  };
+}
+
 export function createCli() {
   const program = new Command();
 
@@ -260,10 +267,7 @@ export function createCli() {
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
-      const backendConfig: BackendConfig = {
-        backend: opts.backend ?? process.env.AIDEV_BACKEND ?? DEFAULT_BACKEND,
-        model: opts.model ?? process.env.AIDEV_MODEL ?? undefined,
-      };
+      const backendConfig = resolveBackendConfig(opts);
       const runner = createRunner(backendConfig);
       const onProgress = verbose
         ? (message: import("./agents/runner.js").ProgressEvent) => {
@@ -271,7 +275,10 @@ export function createCli() {
             if (line) process.stderr.write(line + "\n");
           }
         : undefined;
-      const handlers = createStateHandlers({ git, github, logger, runner, runDocumenter, loadRepoConfig, onProgress });
+      const handlers = createStateHandlers({
+        git, github, logger, runner, runDocumenter, loadRepoConfig, onProgress,
+        resolveRunner: (config) => createRunner(config),
+      });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,
@@ -366,13 +373,13 @@ export function createCli() {
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
-      const backendConfig: BackendConfig = {
-        backend: opts.backend ?? process.env.AIDEV_BACKEND ?? DEFAULT_BACKEND,
-        model: opts.model ?? process.env.AIDEV_MODEL ?? undefined,
-      };
+      const backendConfig = resolveBackendConfig(opts);
       const runner = createRunner(backendConfig);
       const persistence = createFilePersistence(baseDir);
-      const handlers = createStateHandlers({ git, github, logger, runner, runDocumenter, loadRepoConfig });
+      const handlers = createStateHandlers({
+        git, github, logger, runner, runDocumenter, loadRepoConfig,
+        resolveRunner: (config) => createRunner(config),
+      });
 
       const slackNotify = createSlackNotifier({
         webhookUrl: process.env.AIDEV_SLACK_WEBHOOK_URL,

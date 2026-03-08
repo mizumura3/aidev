@@ -3,3 +3,4 @@ dist/
 .devloop/
 .worktrees/
 .env
+package-lock.json

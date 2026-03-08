@@ -15,12 +15,14 @@ import { mergeConfigs } from "../config/merge-config.js";
 import { buildResolvedConfigBlock, upsertAidevBlock } from "../config/serialize-config.js";
 import type { SkippableState } from "../types.js";
 import type { Issue, PullRequest } from "../adapters/github.js";
+import type { BackendConfig } from "../agents/backend-config.js";
 
 export interface Deps {
   git: GitAdapter;
   github: GitHubAdapter;
   logger: Logger;
   runner: AgentRunner;
+  resolveRunner?: (config: BackendConfig) => AgentRunner;
   runDocumenter: (input: DocumenterInput, logger: Logger, runner: AgentRunner, onMessage?: (message: ProgressEvent) => void) => Promise<void>;
   loadRepoConfig: (cwd: string) => Promise<Partial<IssueConfig>>;
   onProgress?: (message: ProgressEvent) => void;
@@ -49,7 +51,8 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
 }
 
 export function createStateHandlers(deps: Deps): StateHandlerMap {
-  const { git, github, logger, runner, runDocumenter, loadRepoConfig } = deps;
+  const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
+  let runner = deps.runner;
 
   const init: StateHandler = async (ctx) => {
     if (ctx.targetKind === "pr") {
@@ -131,6 +134,18 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (merged.base !== undefined) patch.base = merged.base;
     if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
 
+    // Re-create runner if backend/model changed via Issue or repo config
+    if (deps.resolveRunner && (merged.backend || merged.model)) {
+      runner = deps.resolveRunner({
+        backend: merged.backend ?? "claude-code",
+        model: merged.model,
+      });
+      logger.info("Switched backend from merged config", {
+        backend: merged.backend,
+        model: merged.model,
+      });
+    }
+
     const mergedCtx = { ...ctx, ...patch };
 
     // Build resolved config and write back to issue body
@@ -140,6 +155,8 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       dryRun: mergedCtx.dryRun,
       base: mergedCtx.base,
       skip: (mergedCtx.skipStates ?? []) as SkippableState[],
+      backend: merged.backend,
+      model: merged.model,
     };
     const configBlock = buildResolvedConfigBlock(resolvedConfig);
     const updatedBody = upsertAidevBlock(issue.body, configBlock);

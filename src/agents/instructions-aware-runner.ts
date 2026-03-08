@@ -1,5 +1,7 @@
 import type { AgentRunner, AgentRunOptions } from "./runner.js";
 
+// Used by non-Claude-Code backends to inject project instructions (CLAUDE.md etc.)
+// into the prompt. Wired in runner-factory.ts when #82 (Codex backend) lands.
 export class InstructionsAwareRunner implements AgentRunner {
   constructor(
     private readonly inner: AgentRunner,

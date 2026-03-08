@@ -7,7 +7,7 @@ type RunnerFactory = (config: BackendConfig) => AgentRunner;
 
 const registry = new Map<string, RunnerFactory>();
 
-registry.set("claude-code", () => new ClaudeCodeRunner());
+registry.set("claude-code", (_config) => new ClaudeCodeRunner());
 
 export function registerBackend(name: string, factory: RunnerFactory): void {
   registry.set(name, factory);

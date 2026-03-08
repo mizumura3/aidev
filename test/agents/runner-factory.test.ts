@@ -6,10 +6,19 @@ vi.mock("../../src/agents/claude-code-runner.js", () => ({
   })),
 }));
 
-import { createRunner } from "../../src/agents/runner-factory.js";
+import { createRunner, registerBackend } from "../../src/agents/runner-factory.js";
 import { ClaudeCodeRunner } from "../../src/agents/claude-code-runner.js";
 
 describe("createRunner", () => {
+  it("uses a custom backend registered via registerBackend", () => {
+    const customRunner = { run: vi.fn(async () => "custom") };
+    registerBackend("custom", (_config) => customRunner);
+
+    const runner = createRunner({ backend: "custom" });
+    expect(runner).toBe(customRunner);
+  });
+
+
   it("returns a ClaudeCodeRunner for 'claude-code' backend", () => {
     const runner = createRunner({ backend: "claude-code" });
     expect(ClaudeCodeRunner).toHaveBeenCalled();
