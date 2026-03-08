@@ -85,6 +85,7 @@ export const RunContextSchema = z.object({
   result: ResultSchema.optional(),
   review: ReviewSchema.optional(),
   fix: FixSchema.optional(),
+  fixTrigger: z.enum(["ci", "review"]).optional(),
 }).superRefine((ctx, issueCtx) => {
   if (ctx.targetKind === "issue" && ctx.issueNumber == null) {
     issueCtx.addIssue({

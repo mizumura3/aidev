@@ -224,13 +224,14 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       changedFiles: result.changedFiles,
       agentElapsedMs: implElapsed,
     });
-    return transition(ctx, "reviewing", { result });
+    return transition(ctx, "committing", { result });
   };
 
   const reviewing: StateHandler = async (ctx) => {
+    if (!ctx.prNumber) throw new Error("No PR number — reviewing must happen after PR creation");
     if (ctx.skipStates?.includes("reviewing")) {
       logger.info("Skipping reviewing (configured in issue)");
-      return transition(ctx, "committing");
+      return transition(ctx, "watching_ci");
     }
     if (!ctx.plan) throw new Error("No plan available");
     const diff = await git.diff(ctx.base, ctx.cwd);
@@ -252,33 +253,35 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       agentElapsedMs: reviewElapsed,
     });
 
-    const patch = { review, reviewRound: currentRound };
+    const patch: Partial<RunContext> = { review, reviewRound: currentRound };
 
+    // Post review result as PR comment
     if (review.decision === "needs_discussion") {
       const reason = review.reason ?? review.summary;
       const comment = `## ⚠️ Review Blocked\n\n${reason}\n\nThis issue has been flagged for human review. Please update the approach and re-run \`aidev run\`.`;
-
-      if (ctx.targetKind === "pr") {
-        await github.commentOnPr(ctx.prNumber!, comment);
-        logger.info("Posted blocked comment to PR", { pr: ctx.prNumber });
-      } else {
-        await github.commentOnIssue(ctx.issueNumber!, comment);
-        logger.info("Posted blocked comment to issue", { issue: ctx.issueNumber });
-      }
-
+      await github.commentOnPr(ctx.prNumber, comment);
+      logger.info("Posted blocked comment to PR", { pr: ctx.prNumber });
       return transition(ctx, "blocked", patch);
     }
 
     if (review.decision === "changes_requested") {
+      const mustFixList = review.mustFix.map((item) => `- ${item}`).join("\n");
+      const comment = `## 🔍 Review Round ${currentRound}/${maxRounds}\n\n${review.summary}\n\n### Must Fix\n${mustFixList}`;
+      await github.commentOnPr(ctx.prNumber, comment);
+      logger.info("Posted review comment to PR", { pr: ctx.prNumber, round: currentRound });
+
       if (currentRound >= maxRounds) {
-        logger.warn("Max review rounds reached, committing as-is", { round: currentRound, maxRounds });
-        return transition(ctx, "committing", patch);
+        logger.warn("Max review rounds reached, proceeding as-is", { round: currentRound, maxRounds });
+        return transition(ctx, "watching_ci", patch);
       }
-      return transition(ctx, "implementing", patch);
+      return transition(ctx, "fixing", { ...patch, fixTrigger: "review" as const });
     }
 
-    // approve — stop reviewing immediately
-    return transition(ctx, "committing", patch);
+    // approve — post summary and proceed to CI
+    const comment = `## ✅ Review Approved (Round ${currentRound})\n\n${review.summary}`;
+    await github.commentOnPr(ctx.prNumber, comment);
+    logger.info("Posted approval comment to PR", { pr: ctx.prNumber });
+    return transition(ctx, "watching_ci", patch);
   };
 
   const committing: StateHandler = async (ctx) => {
@@ -305,7 +308,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (ctx.targetKind === "pr") {
       await git.push(ctx.headBranch ?? ctx.branch, ctx.cwd);
       logger.info("Updated existing PR branch", { prNumber: ctx.prNumber, branch: ctx.headBranch ?? ctx.branch });
-      return transition(ctx, "watching_ci", { prNumber: ctx.prNumber });
+      return transition(ctx, "reviewing", { prNumber: ctx.prNumber });
     }
     await git.push(ctx.branch, ctx.cwd);
     const prNumber = await github.createPr({
@@ -315,7 +318,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       base: ctx.base,
     });
     logger.info("PR created", { prNumber });
-    return transition(ctx, "watching_ci", { prNumber });
+    return transition(ctx, "reviewing", { prNumber });
   };
 
   const watching_ci: StateHandler = async (ctx) => {
@@ -345,6 +348,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         }
         return transition(ctx, "fixing", {
           fixAttempts: ctx.fixAttempts + 1,
+          fixTrigger: "ci" as const,
         });
       }
       if (status === "no_checks" && Date.now() - start >= gracePeriod) {
@@ -361,21 +365,25 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const fixing: StateHandler = async (ctx) => {
     if (!ctx.plan) throw new Error("No plan available");
-    const ciLog = await github.getCheckRunLogs(ctx.branch);
+    const isReviewFix = ctx.fixTrigger === "review";
+    const fixerInput = isReviewFix
+      ? { plan: ctx.plan, reviewFeedback: ctx.review!.mustFix.join("\n"), cwd: ctx.cwd }
+      : { plan: ctx.plan, ciLog: await github.getCheckRunLogs(ctx.branch), cwd: ctx.cwd };
     const fixStart = performance.now();
     const fix = await runFixer(
-      { plan: ctx.plan, ciLog, cwd: ctx.cwd },
+      fixerInput,
       logger,
       getRunner(ctx),
       deps.onProgress
     );
     const fixElapsed = Math.round(performance.now() - fixStart);
-    logger.info("Fix applied", { rootCause: fix.rootCause, agentElapsedMs: fixElapsed });
+    logger.info("Fix applied", { rootCause: fix.rootCause, trigger: ctx.fixTrigger ?? "ci", agentElapsedMs: fixElapsed });
 
     await git.addAll(ctx.cwd);
     await git.commit(`fix: ${fix.rootCause}`, ctx.cwd);
     await git.push(ctx.branch, ctx.cwd);
-    return transition(ctx, "watching_ci", { fix });
+    const nextState = isReviewFix ? "reviewing" : "watching_ci";
+    return transition(ctx, nextState, { fix });
   };
 
   const merging: StateHandler = async (ctx) => {

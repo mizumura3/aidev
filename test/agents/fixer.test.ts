@@ -109,4 +109,34 @@ describe("runFixer prompt", () => {
     const capturedPrompt = getPrompt();
     expect(capturedPrompt).toMatch(/untrusted-content.*data|data.*untrusted-content/is);
   });
+
+  it("uses review feedback prompt when reviewFeedback is provided", async () => {
+    const { getPrompt, mockRunner } = setupMocks();
+
+    await runFixer(
+      { plan: samplePlan, reviewFeedback: "Fix naming convention\nAdd error handling", cwd: "/tmp" },
+      noopLogger as any,
+      mockRunner
+    );
+
+    const capturedPrompt = getPrompt();
+    expect(capturedPrompt).toContain("review");
+    expect(capturedPrompt).toContain('<untrusted-content source="review-feedback">');
+    expect(capturedPrompt).toContain("Fix naming convention");
+    expect(capturedPrompt).not.toContain("CI pipeline");
+  });
+
+  it("uses CI log prompt when ciLog is provided", async () => {
+    const { getPrompt, mockRunner } = setupMocks();
+
+    await runFixer(
+      { plan: samplePlan, ciLog: "Error: test failed", cwd: "/tmp" },
+      noopLogger as any,
+      mockRunner
+    );
+
+    const capturedPrompt = getPrompt();
+    expect(capturedPrompt).toContain("CI");
+    expect(capturedPrompt).toContain('<untrusted-content source="ci-log">');
+  });
 });
