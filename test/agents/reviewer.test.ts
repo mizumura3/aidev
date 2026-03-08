@@ -24,12 +24,11 @@ function makeInput(overrides?: Partial<ReviewerInput>): ReviewerInput {
 }
 
 describe("runReviewer", () => {
-  it("returns approve with severity when agent outputs valid JSON", async () => {
+  it("returns approve when agent outputs valid JSON", async () => {
     const runner: AgentRunner = {
       run: vi.fn(async () =>
         JSON.stringify({
           decision: "approve",
-          severity: "significant",
           mustFix: [],
           summary: "Implementation matches plan",
         })
@@ -39,7 +38,6 @@ describe("runReviewer", () => {
     const result = await runReviewer(makeInput(), makeLogger(), runner);
 
     expect(result.decision).toBe("approve");
-    expect(result.severity).toBe("significant");
     expect(result.mustFix).toEqual([]);
   });
 
@@ -48,7 +46,6 @@ describe("runReviewer", () => {
       run: vi.fn(async () =>
         JSON.stringify({
           decision: "needs_discussion",
-          severity: "significant",
           mustFix: [],
           reason: "The approach contradicts existing architecture",
           summary: "Needs human review",
@@ -67,7 +64,6 @@ describe("runReviewer", () => {
       run: vi.fn(async () =>
         JSON.stringify({
           decision: "approve",
-          severity: "significant",
           mustFix: [],
           summary: "LGTM",
         })
@@ -91,7 +87,6 @@ describe("runReviewer", () => {
       run: vi.fn(async () =>
         JSON.stringify({
           decision: "approve",
-          severity: "trivial",
           mustFix: [],
           summary: "LGTM",
         })
@@ -104,12 +99,11 @@ describe("runReviewer", () => {
     expect(prompt).toContain("staff engineer");
   });
 
-  it("includes severity field in expected JSON output", async () => {
+  it("includes needs_discussion in prompt JSON template", async () => {
     const runner: AgentRunner = {
       run: vi.fn(async () =>
         JSON.stringify({
           decision: "approve",
-          severity: "trivial",
           mustFix: [],
           summary: "LGTM",
         })
@@ -119,7 +113,6 @@ describe("runReviewer", () => {
     await runReviewer(makeInput(), makeLogger(), runner);
 
     const prompt = (runner.run as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(prompt).toContain('"severity"');
     expect(prompt).toContain('"needs_discussion"');
   });
 });

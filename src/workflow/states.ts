@@ -247,7 +247,6 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const reviewElapsed = Math.round(performance.now() - reviewStart);
     logger.info("Review complete", {
       decision: review.decision,
-      severity: review.severity,
       round: currentRound,
       maxRounds,
       agentElapsedMs: reviewElapsed,

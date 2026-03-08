@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../../src/agents/reviewer.js", () => ({
   runReviewer: vi.fn(async () => ({
     decision: "approve",
-    severity: "significant",
+
     mustFix: [],
     summary: "Looks good",
   })),
@@ -817,7 +817,7 @@ describe("reviewing handler", () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "approve",
-      severity: "significant",
+  
       mustFix: [],
       summary: "LGTM",
     });
@@ -846,7 +846,7 @@ describe("reviewing handler", () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "approve",
-      severity: "significant",
+  
       mustFix: [],
       summary: "LGTM",
     });
@@ -876,7 +876,7 @@ describe("reviewing handler", () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "changes_requested",
-      severity: "significant",
+  
       mustFix: ["Fix naming"],
       summary: "Needs work",
     });
@@ -906,7 +906,7 @@ describe("reviewing handler", () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "needs_discussion",
-      severity: "significant",
+  
       mustFix: [],
       reason: "Approach contradicts existing architecture",
       summary: "Needs human input",
@@ -936,7 +936,7 @@ describe("reviewing handler", () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "changes_requested",
-      severity: "significant",
+  
       mustFix: ["Fix the naming"],
       summary: "Needs changes",
     });
@@ -967,7 +967,7 @@ describe("reviewing handler", () => {
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "approve",
-      severity: "significant",
+  
       mustFix: [],
       summary: "LGTM",
     });
@@ -998,7 +998,7 @@ describe("reviewing handler — needs_discussion posts comment before blocking",
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "needs_discussion",
-      severity: "significant",
+  
       mustFix: [],
       reason: "The approach is fundamentally wrong",
       summary: "Needs human input",
@@ -1030,7 +1030,7 @@ describe("reviewing handler — needs_discussion posts comment before blocking",
     const { runReviewer } = await import("../../src/agents/reviewer.js");
     (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       decision: "needs_discussion",
-      severity: "significant",
+  
       mustFix: [],
       reason: "Design issue",
       summary: "Needs human input",

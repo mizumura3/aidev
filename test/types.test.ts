@@ -127,16 +127,6 @@ describe("ReviewSchema", () => {
     expect(ReviewSchema.parse(review)).toEqual(review);
   });
 
-  it("accepts severity field", () => {
-    const review: Review = {
-      decision: "approve",
-      severity: "trivial",
-      mustFix: [],
-      summary: "Docs-only change",
-    };
-    expect(ReviewSchema.parse(review)).toEqual(review);
-  });
-
   it("rejects invalid decision", () => {
     expect(() =>
       ReviewSchema.parse({ decision: "reject", mustFix: [], summary: "No" })

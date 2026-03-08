@@ -46,7 +46,6 @@ Review with the following priorities (in order):
 Respond ONLY with a JSON object:
 {
   "decision": "approve" | "changes_requested" | "needs_discussion",
-  "severity": "trivial" | "significant",
   "mustFix": ["string[] - issues that must be fixed (empty if approve)"],
   "reason": "string - explanation when needs_discussion (optional otherwise)",
   "summary": "string - review summary"
@@ -55,8 +54,6 @@ Respond ONLY with a JSON object:
 - Use "approve" when the code is ready to merge.
 - Use "changes_requested" when there are fixable issues.
 - Use "needs_discussion" when the approach or premise itself is questionable and needs human judgment.
-- Use "trivial" severity for docs-only, typo fixes, dependency updates, etc.
-- Use "significant" for anything that changes behavior.
 
 Output ONLY valid JSON, no markdown fences.`;
 
