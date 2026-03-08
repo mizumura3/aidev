@@ -16,6 +16,7 @@ import { buildResolvedConfigBlock, upsertAidevBlock } from "../config/serialize-
 import type { SkippableState } from "../types.js";
 import type { Issue, PullRequest } from "../adapters/github.js";
 import type { BackendConfig } from "../agents/backend-config.js";
+import { DEFAULT_BACKEND } from "../agents/backend-config.js";
 
 export interface Deps {
   git: GitAdapter;
@@ -137,7 +138,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     // Re-create runner if backend/model changed via Issue or repo config
     if (deps.resolveRunner && (merged.backend || merged.model)) {
       runner = deps.resolveRunner({
-        backend: merged.backend ?? "claude-code",
+        backend: merged.backend ?? DEFAULT_BACKEND,
         model: merged.model,
       });
       logger.info("Switched backend from merged config", {

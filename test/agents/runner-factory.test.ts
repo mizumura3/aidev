@@ -18,7 +18,6 @@ describe("createRunner", () => {
     expect(runner).toBe(customRunner);
   });
 
-
   it("returns a ClaudeCodeRunner for 'claude-code' backend", () => {
     const runner = createRunner({ backend: "claude-code" });
     expect(ClaudeCodeRunner).toHaveBeenCalled();
