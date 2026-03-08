@@ -110,7 +110,7 @@ skip:
 `skip` で指定可能な工程:
 
 - `reviewing` — AI コードレビューをスキップ（creating_pr → watching_ci へ直行）
-- `watching_ci` — CI 待ちをスキップ（creating_pr → merging or done へ直行）
+- `watching_ci` — CI 待ちをスキップ（reviewing → merging or done へ直行）
 - `documenter` — ドキュメント更新チェックをスキップ
 
 **優先順位**: CLI フラグ > Issue 本文 > `.aidev.yml` > 環境変数 > デフォルト値
