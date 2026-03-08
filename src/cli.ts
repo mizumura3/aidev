@@ -294,18 +294,18 @@ export function createCli() {
       const originalCwd = opts.cwd;
       const worktreePath = join(originalCwd, ".worktrees", `${targetKind}-${targetNumber}`);
 
-      // Remove stale worktree from a previous interrupted run, if any
-      await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
-      await git.addWorktree(worktreePath, ctx.base, originalCwd);
-      ctx.cwd = worktreePath;
-      logger.info("Created worktree", { path: worktreePath, base: ctx.base });
-
       logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
       const workflowStart = performance.now();
       let lastKnownState = ctx.state;
 
       let exitCode = 0;
       try {
+        // Remove stale worktree from a previous interrupted run, if any
+        await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
+        await git.addWorktree(worktreePath, ctx.base, originalCwd);
+        ctx.cwd = worktreePath;
+        logger.info("Created worktree", { path: worktreePath, base: ctx.base });
+
         const result = await runWorkflow(ctx, handlers, persistence, {
           logger,
           onTransition: (from, to, elapsedMs) => {
