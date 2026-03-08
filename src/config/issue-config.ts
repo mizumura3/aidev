@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { SkippableStateSchema } from "../types.js";
-import type { SkippableState } from "../types.js";
+import { SkippableStateSchema, LanguageSchema } from "../types.js";
+import type { SkippableState, Language } from "../types.js";
 
-export type { SkippableState } from "../types.js";
-export const LanguageSchema = z.enum(["ja", "en"]);
-export type Language = z.infer<typeof LanguageSchema>;
+export type { SkippableState, Language } from "../types.js";
+export { LanguageSchema } from "../types.js";
 
 const IssueConfigSchema = z
   .object({
