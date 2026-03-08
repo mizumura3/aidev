@@ -6,6 +6,12 @@ vi.mock("../../src/agents/claude-code-runner.js", () => ({
   })),
 }));
 
+vi.mock("../../src/agents/codex-runner.js", () => ({
+  CodexRunner: vi.fn(() => ({
+    run: vi.fn(async () => "codex result"),
+  })),
+}));
+
 import { createRunner, registerBackend } from "../../src/agents/runner-factory.js";
 import { ClaudeCodeRunner } from "../../src/agents/claude-code-runner.js";
 
@@ -25,12 +31,21 @@ describe("createRunner", () => {
     expect(typeof runner.run).toBe("function");
   });
 
+  it("returns a CodexRunner for 'codex' backend", () => {
+    const runner = createRunner({ backend: "codex", model: "o4-mini" });
+    expect(runner).toBeDefined();
+    expect(typeof runner.run).toBe("function");
+  });
+
   it("throws for unknown backend with available backends listed", () => {
     expect(() => createRunner({ backend: "unknown-backend" })).toThrow(
       /Unknown backend "unknown-backend"/,
     );
     expect(() => createRunner({ backend: "unknown-backend" })).toThrow(
       /claude-code/,
+    );
+    expect(() => createRunner({ backend: "unknown-backend" })).toThrow(
+      /codex/,
     );
   });
 });
