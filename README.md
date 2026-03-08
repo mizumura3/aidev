@@ -109,7 +109,7 @@ skip:
 
 `skip` で指定可能な工程:
 
-- `reviewing` — AI コードレビューをスキップ（implementing → committing へ直行）
+- `reviewing` — AI コードレビューをスキップ（creating_pr → watching_ci へ直行）
 - `watching_ci` — CI 待ちをスキップ（creating_pr → merging or done へ直行）
 - `documenter` — ドキュメント更新チェックをスキップ
 
@@ -162,12 +162,12 @@ planning      Claude がコードベースを調査し、実装計画を策定
   ↓
 implementing  Claude が計画に基づいて実装
   ↓
-reviewing     Claude が diff をレビュー（approve or changes_requested）
-  ↓           ← changes_requested の場合 implementing に戻る
 committing    git commit
   ↓
 creating_pr   git push → PR 作成
   ↓
+reviewing     Claude が diff をレビューし、結果を PR コメントとして投稿
+  ↓           ← changes_requested の場合 fixing → reviewing のループ
 watching_ci   CI の結果をポーリング（最大10分）
   ↓           ← CI 失敗の場合 fixing → watching_ci のループ（最大3回）
 merging       PR をマージ（auto-merge 有効時のみ）
