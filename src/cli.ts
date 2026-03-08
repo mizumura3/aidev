@@ -473,6 +473,7 @@ export function createCli() {
                 reviewRound: 0,
                 dryRun: false,
                 autoMerge: false,
+                language: "ja",
                 issueLabels: issue.labels,
                 skipStates: [],
                 skipAuthorCheck: false,
