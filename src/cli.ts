@@ -300,6 +300,7 @@ export function createCli() {
       const workflowStart = performance.now();
       let lastKnownState = ctx.state;
 
+      let exitCode = 0;
       try {
         const result = await runWorkflow(ctx, handlers, persistence, {
           logger,
@@ -350,7 +351,7 @@ export function createCli() {
             reason: result.review?.reason ?? result.review?.summary,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
-          process.exit(1);
+          exitCode = 1;
         } else {
           logger.error("Devloop failed", { runId: ctx.runId, state: result.state });
           const output = {
@@ -359,7 +360,7 @@ export function createCli() {
             failedAt: result.state,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
-          process.exit(1);
+          exitCode = 1;
         }
       } catch (err) {
         logger.error("Devloop crashed", { runId: ctx.runId, error: String(err) });
@@ -370,7 +371,7 @@ export function createCli() {
           error: err instanceof Error ? err.message : String(err),
         };
         process.stdout.write(JSON.stringify(output) + "\n");
-        process.exit(1);
+        exitCode = 1;
       } finally {
         await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
           logger.error("Worktree cleanup failed", {
@@ -379,6 +380,7 @@ export function createCli() {
           })
         );
       }
+      if (exitCode !== 0) process.exit(exitCode);
     });
 
   program
