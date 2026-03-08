@@ -12,6 +12,12 @@ vi.mock("../../src/agents/codex-runner.js", () => ({
   })),
 }));
 
+vi.mock("../../src/agents/codex-cli-runner.js", () => ({
+  CodexCliRunner: vi.fn(() => ({
+    run: vi.fn(async () => "codex-cli result"),
+  })),
+}));
+
 vi.mock("../../src/agents/instructions-aware-runner.js", () => ({
   InstructionsAwareRunner: vi.fn((inner: unknown) => inner),
 }));
@@ -36,8 +42,15 @@ describe("createRunner", () => {
     expect(typeof runner.run).toBe("function");
   });
 
-  it("returns a CodexRunner wrapped with InstructionsAwareRunner for 'codex' backend", () => {
+  it("returns a CodexCliRunner wrapped with InstructionsAwareRunner for 'codex' backend", () => {
     const runner = createRunner({ backend: "codex", model: "o4-mini" });
+    expect(runner).toBeDefined();
+    expect(typeof runner.run).toBe("function");
+    expect(InstructionsAwareRunner).toHaveBeenCalled();
+  });
+
+  it("returns a CodexRunner (SDK) wrapped with InstructionsAwareRunner for 'codex-sdk' backend", () => {
+    const runner = createRunner({ backend: "codex-sdk", model: "o4-mini" });
     expect(runner).toBeDefined();
     expect(typeof runner.run).toBe("function");
     expect(InstructionsAwareRunner).toHaveBeenCalled();
