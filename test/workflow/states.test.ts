@@ -38,6 +38,8 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     branch: "aidev/issue-1",
     maxFixAttempts: 3,
     fixAttempts: 0,
+    maxReviewRounds: 1,
+    reviewRound: 0,
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
