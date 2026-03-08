@@ -16,7 +16,7 @@ export interface WorkflowOptions {
   logger?: Logger;
 }
 
-const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed"]);
+const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
 
 export async function runWorkflow(
   initial: RunContext,

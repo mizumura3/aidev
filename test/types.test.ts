@@ -29,6 +29,7 @@ describe("RunStateSchema", () => {
       "closing_issue",
       "done",
       "failed",
+      "blocked",
     ];
     for (const state of validStates) {
       expect(RunStateSchema.parse(state)).toBe(state);
@@ -116,6 +117,26 @@ describe("ReviewSchema", () => {
     expect(ReviewSchema.parse(review)).toEqual(review);
   });
 
+  it("accepts needs_discussion decision with reason", () => {
+    const review: Review = {
+      decision: "needs_discussion",
+      mustFix: [],
+      reason: "The approach contradicts the existing architecture",
+      summary: "Needs human decision",
+    };
+    expect(ReviewSchema.parse(review)).toEqual(review);
+  });
+
+  it("accepts severity field", () => {
+    const review: Review = {
+      decision: "approve",
+      severity: "trivial",
+      mustFix: [],
+      summary: "Docs-only change",
+    };
+    expect(ReviewSchema.parse(review)).toEqual(review);
+  });
+
   it("rejects invalid decision", () => {
     expect(() =>
       ReviewSchema.parse({ decision: "reject", mustFix: [], summary: "No" })
@@ -152,6 +173,8 @@ describe("RunContextSchema", () => {
     base: "main",
     maxFixAttempts: 3,
     fixAttempts: 0,
+    maxReviewRounds: 1,
+    reviewRound: 0,
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
@@ -288,5 +311,17 @@ describe("RunContextSchema", () => {
   it("defaults issueTitle to undefined", () => {
     const parsed = RunContextSchema.parse(validContext);
     expect(parsed.issueTitle).toBeUndefined();
+  });
+
+  it("defaults maxReviewRounds to 1", () => {
+    const { maxReviewRounds, ...rest } = validContext;
+    const parsed = RunContextSchema.parse(rest);
+    expect(parsed.maxReviewRounds).toBe(1);
+  });
+
+  it("defaults reviewRound to 0", () => {
+    const { reviewRound, ...rest } = validContext;
+    const parsed = RunContextSchema.parse(rest);
+    expect(parsed.reviewRound).toBe(0);
   });
 });

@@ -126,6 +126,7 @@ export function createCli() {
     .option("--pr <number>", "GitHub pull request number", parseInt)
     .option("--cwd <path>", "Working directory", process.cwd())
     .option("--max-fix-attempts <n>", "Max CI fix attempts", parseInt, 3)
+    .option("--max-review-rounds <n>", "Max review rounds (default: 1)", parseInt, 1)
     .option("--dry-run", "Skip push/PR/merge", false)
     .option("--auto-merge", "Merge PR and close issue after CI passes", false)
     .option("--base <branch>", "Base branch or tag to create branch from", "main")
@@ -231,6 +232,7 @@ export function createCli() {
         const cliExplicit = new Set<string>();
         const flagMap: Record<string, string> = {
           maxFixAttempts: "max-fix-attempts",
+          maxReviewRounds: "max-review-rounds",
           dryRun: "dry-run",
           autoMerge: "auto-merge",
           base: "base",
@@ -256,6 +258,8 @@ export function createCli() {
           base: opts.base,
           maxFixAttempts: opts.maxFixAttempts,
           fixAttempts: 0,
+          maxReviewRounds: opts.maxReviewRounds,
+          reviewRound: 0,
           dryRun: opts.dryRun,
           autoMerge: opts.autoMerge,
           issueLabels: [],
@@ -314,7 +318,7 @@ export function createCli() {
               targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
               issueTitle: finalCtx.issueTitle,
               repo: finalCtx.repo,
-              finalState: finalCtx.state as "done" | "failed",
+              finalState: finalCtx.state as "done" | "failed" | "blocked",
               elapsedMs,
               prNumber: finalCtx.prNumber,
             });
@@ -332,6 +336,15 @@ export function createCli() {
             summary: result.result?.changeSummary,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
+        } else if (result.state === "blocked") {
+          logger.warn("Devloop blocked - needs human discussion", { runId: ctx.runId });
+          const output = {
+            status: "blocked" as const,
+            runId: result.runId,
+            reason: result.review?.reason ?? result.review?.summary,
+          };
+          process.stdout.write(JSON.stringify(output) + "\n");
+          process.exit(1);
         } else {
           logger.error("Devloop failed", { runId: ctx.runId, state: result.state });
           const output = {
@@ -431,6 +444,8 @@ export function createCli() {
                 base: opts.base,
                 maxFixAttempts: 3,
                 fixAttempts: 0,
+                maxReviewRounds: 1,
+                reviewRound: 0,
                 dryRun: false,
                 autoMerge: false,
                 issueLabels: issue.labels,
@@ -450,7 +465,7 @@ export function createCli() {
                     targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
                     issueTitle: finalCtx.issueTitle,
                     repo: finalCtx.repo,
-                    finalState: finalCtx.state as "done" | "failed",
+                    finalState: finalCtx.state as "done" | "failed" | "blocked",
                     elapsedMs,
                     prNumber: finalCtx.prNumber,
                   });

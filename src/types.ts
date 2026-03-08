@@ -20,6 +20,7 @@ export const RunStateSchema = z.enum([
   "closing_issue",
   "done",
   "failed",
+  "blocked",
 ]);
 export type RunState = z.infer<typeof RunStateSchema>;
 
@@ -44,8 +45,10 @@ export const ResultSchema = z.object({
 export type Result = z.infer<typeof ResultSchema>;
 
 export const ReviewSchema = z.object({
-  decision: z.enum(["approve", "changes_requested"]),
+  decision: z.enum(["approve", "changes_requested", "needs_discussion"]),
+  severity: z.enum(["trivial", "significant"]).optional(),
   mustFix: z.array(z.string()),
+  reason: z.string().optional(),
   summary: z.string(),
 });
 export type Review = z.infer<typeof ReviewSchema>;
@@ -70,6 +73,8 @@ export const RunContextSchema = z.object({
   base: z.string().default("main"),
   maxFixAttempts: z.number().default(3),
   fixAttempts: z.number().default(0),
+  maxReviewRounds: z.number().default(1),
+  reviewRound: z.number().default(0),
   dryRun: z.boolean(),
   autoMerge: z.boolean().default(false),
   issueLabels: z.array(z.string()).default([]),

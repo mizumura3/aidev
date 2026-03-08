@@ -43,7 +43,7 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
   };
 }
 
-const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed"]);
+const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
 
 export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
@@ -140,6 +140,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     };
 
     if (merged.maxFixAttempts !== undefined) patch.maxFixAttempts = merged.maxFixAttempts;
+    if (merged.maxReviewRounds !== undefined) patch.maxReviewRounds = merged.maxReviewRounds;
     if (merged.autoMerge !== undefined) patch.autoMerge = merged.autoMerge;
     if (merged.dryRun !== undefined) patch.dryRun = merged.dryRun;
     if (merged.base !== undefined) patch.base = merged.base;
@@ -163,6 +164,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     // Build resolved config and write back to issue body
     const resolvedConfig: ResolvedConfig = {
       maxFixAttempts: mergedCtx.maxFixAttempts,
+      maxReviewRounds: mergedCtx.maxReviewRounds ?? 1,
       autoMerge: mergedCtx.autoMerge,
       dryRun: mergedCtx.dryRun,
       base: mergedCtx.base,
@@ -232,20 +234,45 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     }
     if (!ctx.plan) throw new Error("No plan available");
     const diff = await git.diff(ctx.base, ctx.cwd);
+    const currentRound = (ctx.reviewRound ?? 0) + 1;
+    const maxRounds = ctx.maxReviewRounds ?? 1;
     const reviewStart = performance.now();
     const review = await runReviewer(
       { plan: ctx.plan, diff, cwd: ctx.cwd },
       logger,
       getRunner(ctx),
-      deps.onProgress
+      deps.onProgress,
+      { reviewRound: currentRound, maxReviewRounds: maxRounds },
     );
     const reviewElapsed = Math.round(performance.now() - reviewStart);
-    logger.info("Review complete", { decision: review.decision, agentElapsedMs: reviewElapsed });
+    logger.info("Review complete", {
+      decision: review.decision,
+      severity: review.severity,
+      round: currentRound,
+      maxRounds,
+      agentElapsedMs: reviewElapsed,
+    });
+
+    const patch = { review, reviewRound: currentRound };
+
+    if (review.decision === "needs_discussion") {
+      return transition(ctx, "blocked", patch);
+    }
 
     if (review.decision === "changes_requested") {
-      return transition(ctx, "implementing", { review });
+      return transition(ctx, "implementing", patch);
     }
-    return transition(ctx, "committing", { review });
+
+    // approve
+    const isTrivial = review.severity === "trivial";
+    const isFinalRound = currentRound >= maxRounds;
+
+    if (isTrivial || isFinalRound) {
+      return transition(ctx, "committing", patch);
+    }
+
+    // More rounds remain — continue reviewing with fresh context
+    return transition(ctx, "reviewing", patch);
   };
 
   const committing: StateHandler = async (ctx) => {
@@ -352,6 +379,21 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     return transition(ctx, "closing_issue");
   };
 
+  const blocked: StateHandler = async (ctx) => {
+    const reason = ctx.review?.reason ?? ctx.review?.summary ?? "Review requires human discussion";
+    const comment = `## ⚠️ Review Blocked\n\n${reason}\n\nThis issue has been flagged for human review. Please update the approach and re-run \`aidev run\`.`;
+
+    if (ctx.targetKind === "pr") {
+      await github.commentOnPr(ctx.prNumber!, comment);
+      logger.info("Posted blocked comment to PR", { pr: ctx.prNumber });
+    } else {
+      await github.commentOnIssue(ctx.issueNumber!, comment);
+      logger.info("Posted blocked comment to issue", { issue: ctx.issueNumber });
+    }
+
+    return transition(ctx, "blocked");
+  };
+
   const closing_issue: StateHandler = async (ctx) => {
     if (ctx.targetKind === "pr") {
       logger.info("Skipping issue close for PR mode", { prNumber: ctx.prNumber });
@@ -372,6 +414,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     watching_ci,
     fixing,
     merging,
+    blocked,
     closing_issue,
   };
 }
