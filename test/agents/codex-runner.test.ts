@@ -142,6 +142,26 @@ describe("CodexRunner", () => {
     expect(mockRunStreamed).toHaveBeenCalled();
   });
 
+  it("warns when maxTurns is set", async () => {
+    const runner = new CodexRunner({});
+    mockRun.mockResolvedValueOnce({ finalResponse: "ok", items: [], usage: null });
+
+    const opts = makeOptions({ maxTurns: 10 });
+    await runner.run("hello", opts);
+
+    expect(opts.logger.warn).toHaveBeenCalledWith("codex-sdk backend does not support maxTurns");
+  });
+
+  it("warns when allowedTools is set", async () => {
+    const runner = new CodexRunner({});
+    mockRun.mockResolvedValueOnce({ finalResponse: "ok", items: [], usage: null });
+
+    const opts = makeOptions({ allowedTools: ["Read"] });
+    await runner.run("hello", opts);
+
+    expect(opts.logger.warn).toHaveBeenCalledWith("codex-sdk backend does not support allowedTools");
+  });
+
   it("returns empty string when streaming yields no agent_message", async () => {
     const onMessage = vi.fn();
     const runner = new CodexRunner({});

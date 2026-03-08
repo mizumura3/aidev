@@ -13,6 +13,13 @@ export class CodexCliRunner implements AgentRunner {
   }
 
   async run(prompt: string, options: AgentRunOptions): Promise<string> {
+    if (options.maxTurns) {
+      options.logger.warn("codex-cli backend does not support maxTurns");
+    }
+    if (options.allowedTools) {
+      options.logger.warn("codex-cli backend does not support allowedTools");
+    }
+
     const args = ["exec", "-s", "danger-full-access", "-C", options.cwd];
 
     if (this.config.model) {
@@ -21,7 +28,10 @@ export class CodexCliRunner implements AgentRunner {
 
     args.push("--", prompt);
 
-    const { stdout } = await execa("codex", args, { cwd: options.cwd });
+    const { stdout, stderr } = await execa("codex", args, { cwd: options.cwd });
+    if (stderr) {
+      options.logger.debug("codex stderr", { stderr });
+    }
     return stdout;
   }
 }

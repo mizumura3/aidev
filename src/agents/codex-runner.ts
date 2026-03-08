@@ -19,6 +19,13 @@ export class CodexRunner implements AgentRunner {
   }
 
   async run(prompt: string, options: AgentRunOptions): Promise<string> {
+    if (options.maxTurns) {
+      options.logger.warn("codex-sdk backend does not support maxTurns");
+    }
+    if (options.allowedTools) {
+      options.logger.warn("codex-sdk backend does not support allowedTools");
+    }
+
     const thread = this.codex.startThread({
       ...(this.config.model && { model: this.config.model }),
       workingDirectory: options.cwd,
@@ -47,7 +54,10 @@ export class CodexRunner implements AgentRunner {
       }
       return finalResponse;
     } else {
-      const turn = await thread.run(prompt);
+      const turn = await withTimeout(
+        thread.run(prompt),
+        DEFAULT_STREAM_TIMEOUT_MS,
+      );
       return turn.finalResponse;
     }
   }

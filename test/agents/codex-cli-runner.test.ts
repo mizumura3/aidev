@@ -90,4 +90,34 @@ describe("CodexCliRunner", () => {
       "command not found: codex",
     );
   });
+
+  it("logs stderr when present", async () => {
+    mockExeca.mockResolvedValueOnce({ stdout: "ok", stderr: "some warning" });
+
+    const opts = makeOptions();
+    const runner = new CodexCliRunner({});
+    await runner.run("hello", opts);
+
+    expect(opts.logger.debug).toHaveBeenCalledWith("codex stderr", { stderr: "some warning" });
+  });
+
+  it("warns when maxTurns is set", async () => {
+    mockExeca.mockResolvedValueOnce({ stdout: "ok", stderr: "" });
+
+    const opts = makeOptions({ maxTurns: 10 });
+    const runner = new CodexCliRunner({});
+    await runner.run("hello", opts);
+
+    expect(opts.logger.warn).toHaveBeenCalledWith("codex-cli backend does not support maxTurns");
+  });
+
+  it("warns when allowedTools is set", async () => {
+    mockExeca.mockResolvedValueOnce({ stdout: "ok", stderr: "" });
+
+    const opts = makeOptions({ allowedTools: ["Read"] });
+    const runner = new CodexCliRunner({});
+    await runner.run("hello", opts);
+
+    expect(opts.logger.warn).toHaveBeenCalledWith("codex-cli backend does not support allowedTools");
+  });
 });
