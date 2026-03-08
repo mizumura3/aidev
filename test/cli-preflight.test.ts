@@ -12,7 +12,10 @@ vi.mock("../src/preflight.js", () => ({
 }));
 
 vi.mock("../src/adapters/git.js", () => ({
-  createGitAdapter: vi.fn(() => ({})),
+  createGitAdapter: vi.fn(() => ({
+    addWorktree: vi.fn(async () => {}),
+    removeWorktree: vi.fn(async () => {}),
+  })),
 }));
 
 vi.mock("../src/adapters/github.js", () => ({

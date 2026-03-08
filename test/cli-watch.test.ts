@@ -796,4 +796,182 @@ describe("run command", () => {
     // Workflow should have been called (confirmation skipped)
     expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
   });
+
+  it("creates worktree and passes worktree cwd to runWorkflow", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+      "--cwd",
+      "/tmp/myrepo",
+    ]);
+
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+    expect(mockAddWorktree).toHaveBeenCalledWith(
+      expect.stringContaining(".worktrees/issue-42"),
+      "main",
+      "/tmp/myrepo",
+    );
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+    const ctx = mockRunWorkflow.mock.calls[0][0];
+    expect(ctx.cwd).toContain(".worktrees/issue-42");
+  });
+
+  it("cleans up worktree after successful run", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+    ]);
+
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+  });
+
+  it("cleans up worktree after failed run", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockRejectedValue(new Error("workflow crashed"));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+    ]);
+
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses --base for worktree creation", async () => {
+    const mockGithub = {
+      listIssuesByLabel: vi.fn(async () => []),
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+      getAuthenticatedUser: vi.fn(async () => "testuser"),
+      commentOnIssue: vi.fn(),
+      createPr: vi.fn(),
+      getCiStatus: vi.fn(),
+      mergePr: vi.fn(),
+      closeIssue: vi.fn(),
+      getCheckRunLogs: vi.fn(),
+    };
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "run",
+      "--issue",
+      "42",
+      "--repo",
+      "owner/repo",
+      "--yes",
+      "--base",
+      "v1.2.0",
+    ]);
+
+    expect(mockAddWorktree).toHaveBeenCalledWith(
+      expect.stringContaining(".worktrees/issue-42"),
+      "v1.2.0",
+      expect.any(String),
+    );
+  });
 });

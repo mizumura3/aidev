@@ -12,8 +12,8 @@ vi.mock("../src/adapters/git.js", () => ({
     push: vi.fn(),
     diff: vi.fn(),
     currentBranch: vi.fn(),
-    addWorktree: vi.fn(),
-    removeWorktree: vi.fn(),
+    addWorktree: vi.fn(async () => {}),
+    removeWorktree: vi.fn(async () => {}),
   })),
 }));
 
