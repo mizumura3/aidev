@@ -290,9 +290,10 @@ export function createCli() {
         channel: process.env.AIDEV_SLACK_CHANNEL,
       });
 
-      // Create worktree for isolated work
-      const worktreePath = join(ctx.cwd, ".worktrees", `${targetKind}-${targetNumber}`);
-      await git.addWorktree(worktreePath, ctx.base, ctx.cwd);
+      // Create worktree for isolated work (always use original repo path, not ctx.cwd which may be stale from resume)
+      const originalCwd = opts.cwd;
+      const worktreePath = join(originalCwd, ".worktrees", `${targetKind}-${targetNumber}`);
+      await git.addWorktree(worktreePath, ctx.base, originalCwd);
       ctx.cwd = worktreePath;
 
       logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
@@ -371,7 +372,7 @@ export function createCli() {
         process.stdout.write(JSON.stringify(output) + "\n");
         process.exit(1);
       } finally {
-        await git.removeWorktree(worktreePath, opts.cwd).catch((err) =>
+        await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
           logger.error("Worktree cleanup failed", {
             path: worktreePath,
             error: String(err),

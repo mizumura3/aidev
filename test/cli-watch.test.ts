@@ -928,6 +928,74 @@ describe("run command", () => {
     expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
   });
 
+  it("creates worktree from opts.cwd even when resuming (saved cwd may be stale)", async () => {
+    // When resuming, ctx.cwd from saved state points to a now-deleted worktree path.
+    // The worktree should be created from opts.cwd (the original repo), not ctx.cwd.
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".devloop", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "planning",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: false,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // Worktree should be created from /tmp/real-repo, NOT from the stale saved cwd
+      expect(mockAddWorktree).toHaveBeenCalledWith(
+        expect.stringContaining("/tmp/real-repo/.worktrees/issue-42"),
+        "main",
+        "/tmp/real-repo",
+      );
+    } finally {
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
   it("uses --base for worktree creation", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => []),
