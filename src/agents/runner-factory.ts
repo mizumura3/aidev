@@ -17,7 +17,7 @@ registry.set("claude-code", (config) => {
   return new ClaudeCodeRunner();
 });
 
-registry.set("codex", (config) => new InstructionsAwareRunner(new CodexCliRunner(config)));
+registry.set("codex-cli", (config) => new InstructionsAwareRunner(new CodexCliRunner(config)));
 
 registry.set("codex-sdk", (config) => new InstructionsAwareRunner(new CodexRunner(config)));
 

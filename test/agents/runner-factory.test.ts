@@ -42,8 +42,8 @@ describe("createRunner", () => {
     expect(typeof runner.run).toBe("function");
   });
 
-  it("returns a CodexCliRunner wrapped with InstructionsAwareRunner for 'codex' backend", () => {
-    const runner = createRunner({ backend: "codex", model: "o4-mini" });
+  it("returns a CodexCliRunner wrapped with InstructionsAwareRunner for 'codex-cli' backend", () => {
+    const runner = createRunner({ backend: "codex-cli", model: "o4-mini" });
     expect(runner).toBeDefined();
     expect(typeof runner.run).toBe("function");
     expect(InstructionsAwareRunner).toHaveBeenCalled();

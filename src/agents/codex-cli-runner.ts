@@ -16,7 +16,7 @@ export class CodexCliRunner implements AgentRunner {
       args.push("--model", this.config.model);
     }
 
-    args.push(prompt);
+    args.push("--", prompt);
 
     const { stdout } = await execa("codex", args, { cwd: options.cwd });
     return stdout;

@@ -3,10 +3,10 @@ import type { AgentRunner, AgentRunOptions } from "./runner.js";
 import type { BackendConfig } from "./backend-config.js";
 
 export class CodexRunner implements AgentRunner {
-  private readonly config: BackendConfig;
+  private readonly config: Partial<BackendConfig>;
   private readonly codex: Codex;
 
-  constructor(config: BackendConfig) {
+  constructor(config: Partial<BackendConfig>) {
     this.config = config;
     this.codex = new Codex({
       ...(config.apiKey && { apiKey: config.apiKey }),
@@ -22,6 +22,7 @@ export class CodexRunner implements AgentRunner {
 
     if (options.onMessage) {
       const { events } = await thread.runStreamed(prompt);
+      // Keep the last agent_message as the final response
       let finalResponse = "";
       for await (const event of events) {
         options.onMessage(event);

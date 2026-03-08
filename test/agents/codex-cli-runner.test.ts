@@ -48,6 +48,7 @@ describe("CodexCliRunner", () => {
     await runner.run("fix the bug", makeOptions());
 
     const args = mockExeca.mock.calls[0]![1] as string[];
+    expect(args[args.length - 2]).toBe("--");
     expect(args[args.length - 1]).toBe("fix the bug");
   });
 
