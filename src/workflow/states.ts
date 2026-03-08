@@ -256,6 +256,17 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const patch = { review, reviewRound: currentRound };
 
     if (review.decision === "needs_discussion") {
+      const reason = review.reason ?? review.summary;
+      const comment = `## ⚠️ Review Blocked\n\n${reason}\n\nThis issue has been flagged for human review. Please update the approach and re-run \`aidev run\`.`;
+
+      if (ctx.targetKind === "pr") {
+        await github.commentOnPr(ctx.prNumber!, comment);
+        logger.info("Posted blocked comment to PR", { pr: ctx.prNumber });
+      } else {
+        await github.commentOnIssue(ctx.issueNumber!, comment);
+        logger.info("Posted blocked comment to issue", { issue: ctx.issueNumber });
+      }
+
       return transition(ctx, "blocked", patch);
     }
 
@@ -379,21 +390,6 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     return transition(ctx, "closing_issue");
   };
 
-  const blocked: StateHandler = async (ctx) => {
-    const reason = ctx.review?.reason ?? ctx.review?.summary ?? "Review requires human discussion";
-    const comment = `## ⚠️ Review Blocked\n\n${reason}\n\nThis issue has been flagged for human review. Please update the approach and re-run \`aidev run\`.`;
-
-    if (ctx.targetKind === "pr") {
-      await github.commentOnPr(ctx.prNumber!, comment);
-      logger.info("Posted blocked comment to PR", { pr: ctx.prNumber });
-    } else {
-      await github.commentOnIssue(ctx.issueNumber!, comment);
-      logger.info("Posted blocked comment to issue", { issue: ctx.issueNumber });
-    }
-
-    return transition(ctx, "blocked");
-  };
-
   const closing_issue: StateHandler = async (ctx) => {
     if (ctx.targetKind === "pr") {
       logger.info("Skipping issue close for PR mode", { prNumber: ctx.prNumber });
@@ -414,7 +410,6 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     watching_ci,
     fixing,
     merging,
-    blocked,
     closing_issue,
   };
 }
