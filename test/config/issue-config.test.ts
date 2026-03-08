@@ -51,6 +51,7 @@ describe("parseIssueConfig", () => {
       "autoMerge: true",
       "dryRun: false",
       "base: release/1.3",
+      "language: en",
       "skip:",
       "  - reviewing",
       "  - documenter",
@@ -65,6 +66,7 @@ describe("parseIssueConfig", () => {
       autoMerge: true,
       dryRun: false,
       base: "release/1.3",
+      language: "en",
       skip: ["reviewing", "documenter"],
     });
   });
@@ -160,5 +162,18 @@ describe("parseIssueConfig", () => {
     const body = "```aidev\nmaxReviewRounds: 0\n```";
     const result = parseIssueConfig(body);
     expect(result.maxReviewRounds).toBeUndefined();
+  });
+
+  it("parses language when value is ja or en", () => {
+    const body = "```aidev\nlanguage: en\n```";
+    const result = parseIssueConfig(body);
+    expect(result.language).toBe("en");
+  });
+
+  it("ignores invalid language values", () => {
+    const body = "```aidev\nlanguage: fr\nmaxFixAttempts: 3\n```";
+    const result = parseIssueConfig(body);
+    expect(result.language).toBeUndefined();
+    expect(result.maxFixAttempts).toBe(3);
   });
 });

@@ -28,6 +28,7 @@ describe("loadRepoConfig", () => {
         "autoMerge: true",
         "dryRun: false",
         "base: develop",
+        "language: en",
         "skip:",
         "  - reviewing",
         "  - watching_ci",
@@ -40,6 +41,7 @@ describe("loadRepoConfig", () => {
       autoMerge: true,
       dryRun: false,
       base: "develop",
+      language: "en",
       skip: ["reviewing", "watching_ci"],
     });
   });

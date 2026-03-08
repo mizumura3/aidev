@@ -19,6 +19,7 @@ function makeInput(overrides?: Partial<ReviewerInput>): ReviewerInput {
     },
     diff: "diff --git a/src/foo.ts ...",
     cwd: "/tmp/repo",
+    language: "ja",
     ...overrides,
   };
 }
@@ -114,5 +115,22 @@ describe("runReviewer", () => {
 
     const prompt = (runner.run as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(prompt).toContain('"needs_discussion"');
+  });
+
+  it("includes explicit output language instruction", async () => {
+    const runner: AgentRunner = {
+      run: vi.fn(async () =>
+        JSON.stringify({
+          decision: "approve",
+          mustFix: [],
+          summary: "LGTM",
+        })
+      ),
+    };
+
+    await runReviewer({ ...makeInput(), language: "en" }, makeLogger(), runner);
+
+    const prompt = (runner.run as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    expect(prompt).toContain("Write all output text in English");
   });
 });

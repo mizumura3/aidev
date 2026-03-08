@@ -7,6 +7,7 @@ export interface ReviewerInput {
   plan: Plan;
   diff: string;
   cwd: string;
+  language: "ja" | "en";
 }
 
 export interface ReviewRoundInfo {
@@ -24,10 +25,15 @@ export async function runReviewer(
   const roundLine = roundInfo
     ? `\n\nThis is review Round ${roundInfo.reviewRound} of ${roundInfo.maxReviewRounds}.`
     : "";
+  const languageInstruction = input.language === "ja"
+    ? "Write all output text in Japanese."
+    : "Write all output text in English.";
 
   const prompt = `You are a senior staff engineer conducting a thorough code review. Review the implementation against the plan with the rigor expected of a staff-level reviewer.
 
 ${INJECTION_DEFENSE_PROMPT}
+
+${languageInstruction}
 
 ${wrapUntrustedContent("plan", JSON.stringify(input.plan, null, 2))}
 

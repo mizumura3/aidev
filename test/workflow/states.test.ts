@@ -50,6 +50,7 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     reviewRound: 0,
     dryRun: false,
     autoMerge: false,
+    language: "ja",
     issueLabels: [],
     skipStates: [],
     base: "main",
@@ -361,6 +362,60 @@ describe("init handler", () => {
     expect(result.ctx.maxFixAttempts).toBe(10);
   });
 
+  it("applies language from repo config", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ language: "en" })),
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.language).toBe("en");
+  });
+
+  it("body language overrides repo language", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ language: "en" })),
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nlanguage: ja\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.language).toBe("ja");
+  });
+
+  it("CLI language overrides both repo and body config", async () => {
+    const deps = makeDeps({
+      loadRepoConfig: vi.fn(async () => ({ language: "ja" })),
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nlanguage: ja\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ language: "en", _cliExplicit: new Set(["language"]) });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.language).toBe("en");
+  });
+
   it("CLI flags override both repo and issue config", async () => {
     const deps = makeDeps({
       loadRepoConfig: vi.fn(async () => ({ base: "develop" })),
@@ -392,6 +447,10 @@ describe("init handler", () => {
     expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
       1,
       expect.stringContaining("```aidev"),
+    );
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("language: ja"),
     );
   });
 
@@ -1197,7 +1256,51 @@ describe("reviewing handler", () => {
     const comment = (deps.github.commentOnPr as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
     expect(comment).not.toContain("NaN");
     expect(comment).not.toContain("null");
-    expect(comment).toContain("Round 1/1");
+    expect(comment).toContain("1/1");
+  });
+
+  it("uses Japanese review header by default", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "approve",
+      mustFix: [],
+      summary: "LGTM",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      prNumber: 42,
+      plan: samplePlan,
+      language: "ja",
+    });
+
+    await handlers.reviewing!(ctx);
+
+    const comment = (deps.github.commentOnPr as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    expect(comment).toContain("レビュー承認");
+  });
+
+  it("uses English review header when language is en", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "approve",
+      mustFix: [],
+      summary: "LGTM",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      prNumber: 42,
+      plan: samplePlan,
+      language: "en",
+    });
+
+    await handlers.reviewing!(ctx);
+
+    const comment = (deps.github.commentOnPr as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+    expect(comment).toContain("Review Approved");
   });
 });
 
@@ -1357,9 +1460,28 @@ describe("planning handler", () => {
 
     expect(deps.github.commentOnPr).toHaveBeenCalledWith(
       5,
-      expect.stringContaining("## 🔍 Investigation"),
+      expect.stringContaining("## 🔍 調査"),
     );
     expect(deps.github.commentOnIssue).not.toHaveBeenCalled();
+  });
+
+  it("uses English investigation header when language is en", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      state: "planning",
+      branch: "feat/taka-qa-flow",
+      language: "en",
+    });
+
+    await handlers.planning!(ctx);
+
+    expect(deps.github.commentOnPr).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("## 🔍 Investigation"),
+    );
   });
 });
 

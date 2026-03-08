@@ -3,6 +3,8 @@ import { SkippableStateSchema } from "../types.js";
 import type { SkippableState } from "../types.js";
 
 export type { SkippableState } from "../types.js";
+export const LanguageSchema = z.enum(["ja", "en"]);
+export type Language = z.infer<typeof LanguageSchema>;
 
 const IssueConfigSchema = z
   .object({
@@ -14,6 +16,7 @@ const IssueConfigSchema = z
     skip: z.array(SkippableStateSchema).optional(),
     backend: z.string().optional(),
     model: z.string().optional(),
+    language: LanguageSchema.optional(),
   })
   .strict();
 
@@ -28,6 +31,7 @@ export interface ResolvedConfig {
   skip: SkippableState[];
   backend?: string;
   model?: string;
+  language: Language;
 }
 
 /**
@@ -142,6 +146,10 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
 
   if (typeof raw.model === "string" && raw.model.length > 0) {
     obj.model = raw.model;
+  }
+
+  if (typeof raw.language === "string" && LanguageSchema.safeParse(raw.language).success) {
+    obj.language = raw.language;
   }
 
   if (Array.isArray(raw.skip)) {

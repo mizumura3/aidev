@@ -7,6 +7,7 @@ import type { Logger } from "../util/logger.js";
 export interface PlannerInput {
   issue: Issue;
   cwd: string;
+  language: "ja" | "en";
 }
 
 export async function runPlanner(
@@ -15,9 +16,15 @@ export async function runPlanner(
   runner: AgentRunner,
   onMessage?: (message: ProgressEvent) => void
 ): Promise<Plan> {
+  const languageInstruction = input.language === "ja"
+    ? "Write all output text in Japanese."
+    : "Write all output text in English.";
+
   const prompt = `Analyze the codebase and the following GitHub issue. Then output your implementation plan as a single JSON object.
 
 ${INJECTION_DEFENSE_PROMPT}
+
+${languageInstruction}
 
 Issue #${input.issue.number}: ${wrapUntrustedContent("issue-title", input.issue.title)}
 

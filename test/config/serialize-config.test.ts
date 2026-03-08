@@ -14,6 +14,7 @@ describe("serializeConfig", () => {
       autoMerge: true,
       dryRun: false,
       base: "develop",
+      language: "ja",
       skip: ["reviewing", "watching_ci"],
     };
 
@@ -25,6 +26,7 @@ describe("serializeConfig", () => {
         "autoMerge: true",
         "dryRun: false",
         "base: develop",
+        "language: ja",
         "skip:",
         "  - reviewing",
         "  - watching_ci",
@@ -39,6 +41,7 @@ describe("serializeConfig", () => {
       autoMerge: false,
       dryRun: false,
       base: "main",
+      language: "ja",
       skip: [],
       backend: "codex",
       model: "o3",
@@ -56,6 +59,7 @@ describe("serializeConfig", () => {
       autoMerge: false,
       dryRun: false,
       base: "main",
+      language: "ja",
       skip: [],
     };
 
@@ -71,6 +75,7 @@ describe("serializeConfig", () => {
       autoMerge: false,
       dryRun: false,
       base: "main",
+      language: "ja",
       skip: [],
     };
 
@@ -83,6 +88,7 @@ describe("serializeConfig", () => {
         "autoMerge: false",
         "dryRun: false",
         "base: main",
+        "language: ja",
       ].join("\n"),
     );
   });
@@ -96,6 +102,7 @@ describe("buildResolvedConfigBlock", () => {
       autoMerge: false,
       dryRun: false,
       base: "main",
+      language: "ja",
       skip: [],
     };
 
@@ -108,6 +115,7 @@ describe("buildResolvedConfigBlock", () => {
         "autoMerge: false",
         "dryRun: false",
         "base: main",
+        "language: ja",
         "```",
       ].join("\n"),
     );
