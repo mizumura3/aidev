@@ -13,6 +13,8 @@ base: main
 #   - reviewing
 #   - watching_ci
 #   - documenter
+# backend: claude-code
+# model: sonnet
 `;
 
 export function generateAidevYml(): string {

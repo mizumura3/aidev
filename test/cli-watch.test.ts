@@ -47,6 +47,12 @@ vi.mock("../src/preflight.js", () => ({
   runPreflightChecks: mockRunPreflightChecks,
 }));
 
+vi.mock("../src/agents/runner-factory.js", () => ({
+  createRunner: vi.fn(() => ({
+    run: vi.fn(async () => "mock result"),
+  })),
+}));
+
 import { createCli } from "../src/cli.js";
 import { createGitAdapter } from "../src/adapters/git.js";
 import { createGitHubAdapter } from "../src/adapters/github.js";

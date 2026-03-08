@@ -58,4 +58,25 @@ describe("mergeConfigs", () => {
 
     expect(result).toEqual({});
   });
+
+  it("merges backend and model fields", () => {
+    const repo: Partial<IssueConfig> = { backend: "claude-code", model: "sonnet" };
+    const issue: Partial<IssueConfig> = { model: "opus" };
+
+    const result = mergeConfigs(repo, issue, new Set());
+
+    expect(result.backend).toBe("claude-code");
+    expect(result.model).toBe("opus");
+  });
+
+  it("excludes backend/model when cli-explicit", () => {
+    const repo: Partial<IssueConfig> = { backend: "claude-code" };
+    const issue: Partial<IssueConfig> = { model: "sonnet" };
+    const cliExplicit = new Set(["backend", "model"]);
+
+    const result = mergeConfigs(repo, issue, cliExplicit);
+
+    expect(result).not.toHaveProperty("backend");
+    expect(result).not.toHaveProperty("model");
+  });
 });

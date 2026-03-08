@@ -58,6 +58,12 @@ vi.mock("../src/preflight.js", () => ({
   runPreflightChecks: mockRunPreflightChecks,
 }));
 
+vi.mock("../src/agents/runner-factory.js", () => ({
+  createRunner: vi.fn(() => ({
+    run: vi.fn(async () => "mock result"),
+  })),
+}));
+
 import { createCli } from "../src/cli.js";
 import { runWorkflow } from "../src/workflow/engine.js";
 

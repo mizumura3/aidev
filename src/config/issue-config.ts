@@ -11,6 +11,8 @@ const IssueConfigSchema = z
     dryRun: z.boolean().optional(),
     base: z.string().optional(),
     skip: z.array(SkippableStateSchema).optional(),
+    backend: z.string().optional(),
+    model: z.string().optional(),
   })
   .strict();
 
@@ -22,6 +24,8 @@ export interface ResolvedConfig {
   dryRun: boolean;
   base: string;
   skip: SkippableState[];
+  backend?: string;
+  model?: string;
 }
 
 /**
@@ -123,6 +127,14 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
 
   if (typeof raw.base === "string" && raw.base.length > 0) {
     obj.base = raw.base;
+  }
+
+  if (typeof raw.backend === "string" && raw.backend.length > 0) {
+    obj.backend = raw.backend;
+  }
+
+  if (typeof raw.model === "string" && raw.model.length > 0) {
+    obj.model = raw.model;
   }
 
   if (Array.isArray(raw.skip)) {

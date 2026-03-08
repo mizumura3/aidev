@@ -53,6 +53,8 @@ bun run aidev run --pr <number> --repo <owner/name> --cwd <path>
 | `--claude-path <path>` | Claude Code バイナリのパス | PATH から自動検出 |
 | `-y, --yes` | 実行前の確認プロンプトをスキップ | `false` |
 | `--allow-foreign-issues` | 他ユーザーが作成した Issue の処理を許可 | `false` |
+| `--backend <name>` | 使用するバックエンドランナー | `claude-code` |
+| `--model <model>` | バックエンドで使用するモデル | — |
 
 `--issue` と `--pr` は排他的で、**どちらか一方を必ず指定**する。
 
@@ -102,6 +104,8 @@ skip:
 | `dryRun` | boolean | push/PR/merge をスキップ |
 | `base` | string | ブランチ作成元 |
 | `skip` | string[] | スキップする工程（下記参照） |
+| `backend` | string | 使用するバックエンドランナー |
+| `model` | string | バックエンドで使用するモデル |
 
 `skip` で指定可能な工程:
 
@@ -109,7 +113,16 @@ skip:
 - `watching_ci` — CI 待ちをスキップ（creating_pr → merging or done へ直行）
 - `documenter` — ドキュメント更新チェックをスキップ
 
-**優先順位**: CLI フラグ > Issue 本文 > `.aidev.yml` > デフォルト値
+**優先順位**: CLI フラグ > Issue 本文 > `.aidev.yml` > 環境変数 > デフォルト値
+
+#### バックエンド設定
+
+`--backend` と `--model` でエージェント実行に使用するバックエンドを切り替えられる。環境変数でも設定可能:
+
+```bash
+export AIDEV_BACKEND=claude-code
+export AIDEV_MODEL=claude-sonnet-4-6
+```
 
 ### `watch` — ラベル付き Issue を監視して自動処理
 
@@ -131,6 +144,8 @@ bun run aidev watch --repo <owner/name> --cwd <path>
 | `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
 | `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
 | `--claude-path <path>` | Claude Code バイナリのパス | PATH から自動検出 |
+| `--backend <name>` | 使用するバックエンドランナー | `claude-code` |
+| `--model <model>` | バックエンドで使用するモデル | — |
 
 ### `status` — 実行状態を確認
 

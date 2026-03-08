@@ -117,4 +117,30 @@ describe("parseIssueConfig", () => {
     const result = parseIssueConfig(body);
     expect(result.skip).toEqual(["documenter"]);
   });
+
+  it("parses backend field", () => {
+    const body = "```aidev\nbackend: claude-code\n```";
+    const result = parseIssueConfig(body);
+    expect(result.backend).toBe("claude-code");
+  });
+
+  it("parses model field", () => {
+    const body = "```aidev\nmodel: sonnet\n```";
+    const result = parseIssueConfig(body);
+    expect(result.model).toBe("sonnet");
+  });
+
+  it("ignores empty backend value", () => {
+    const body = "```aidev\nbackend:\nmaxFixAttempts: 3\n```";
+    const result = parseIssueConfig(body);
+    expect(result.backend).toBeUndefined();
+    expect(result.maxFixAttempts).toBe(3);
+  });
+
+  it("ignores empty model value", () => {
+    const body = "```aidev\nmodel:\nmaxFixAttempts: 3\n```";
+    const result = parseIssueConfig(body);
+    expect(result.model).toBeUndefined();
+    expect(result.maxFixAttempts).toBe(3);
+  });
 });
