@@ -887,7 +887,8 @@ describe("run command", () => {
       "--yes",
     ]);
 
-    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+    // Called twice: once for stale cleanup before addWorktree, once in finally
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
   });
 
   it("cleans up worktree after failed run", async () => {
@@ -925,7 +926,8 @@ describe("run command", () => {
       "--yes",
     ]);
 
-    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+    // Called twice: once for stale cleanup before addWorktree, once in finally
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
   });
 
   it("creates worktree from opts.cwd even when resuming (saved cwd may be stale)", async () => {

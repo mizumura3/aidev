@@ -293,8 +293,12 @@ export function createCli() {
       // Create worktree for isolated work (always use original repo path, not ctx.cwd which may be stale from resume)
       const originalCwd = opts.cwd;
       const worktreePath = join(originalCwd, ".worktrees", `${targetKind}-${targetNumber}`);
+
+      // Remove stale worktree from a previous interrupted run, if any
+      await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
       await git.addWorktree(worktreePath, ctx.base, originalCwd);
       ctx.cwd = worktreePath;
+      logger.info("Created worktree", { path: worktreePath, base: ctx.base });
 
       logger.info("Starting devloop", { runId: ctx.runId, targetKind, targetNumber, repo: ctx.repo });
       const workflowStart = performance.now();
