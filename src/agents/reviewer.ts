@@ -48,7 +48,7 @@ Respond ONLY with a JSON object:
   "decision": "approve" | "changes_requested" | "needs_discussion",
   "mustFix": ["string[] - issues that must be fixed (empty if approve)"],
   "reason": "string - explanation when needs_discussion (optional otherwise)",
-  "summary": "string - review summary"
+  "summary": "string - review summary in markdown with line breaks for readability"
 }
 
 - Use "approve" when the code is ready to merge.
