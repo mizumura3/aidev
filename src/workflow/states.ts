@@ -1,5 +1,5 @@
 import type { AgentRunner, ProgressEvent } from "../agents/runner.js";
-import type { StateHandler, RunContext, RunState } from "../types.js";
+import type { StateHandler, RunContext, RunState, Review } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
 import type { GitHubAdapter } from "../adapters/github.js";
@@ -44,6 +44,41 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
 }
 
 const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
+
+function formatReviewComment(review: Review, round: number, maxRounds: number): string {
+  const header = `Round ${round}/${maxRounds}`;
+
+  if (review.decision === "needs_discussion") {
+    const reason = review.reason ?? review.summary;
+    return [
+      `## ⚠️ Review Blocked (${header})`,
+      "",
+      reason,
+      "",
+      "---",
+      "This issue has been flagged for human review. Please update the approach and re-run `aidev run`.",
+    ].join("\n");
+  }
+
+  if (review.decision === "changes_requested") {
+    const lines = [
+      `## 🔧 Changes Requested (${header})`,
+      "",
+      review.summary,
+    ];
+    if (review.mustFix.length > 0) {
+      lines.push("", "### Must Fix", ...review.mustFix.map((item) => `- ${item}`));
+    }
+    return lines.join("\n");
+  }
+
+  // approve
+  return [
+    `## ✅ Review Approved (${header})`,
+    "",
+    review.summary,
+  ].join("\n");
+}
 
 export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
@@ -256,20 +291,15 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const patch: Partial<RunContext> = { review, reviewRound: currentRound };
 
     // Post review result as PR comment
+    const comment = formatReviewComment(review, currentRound, maxRounds);
+    await github.commentOnPr(ctx.prNumber, comment);
+    logger.info("Posted review comment to PR", { pr: ctx.prNumber, decision: review.decision, round: currentRound });
+
     if (review.decision === "needs_discussion") {
-      const reason = review.reason ?? review.summary;
-      const comment = `## ⚠️ Review Blocked\n\n${reason}\n\nThis issue has been flagged for human review. Please update the approach and re-run \`aidev run\`.`;
-      await github.commentOnPr(ctx.prNumber, comment);
-      logger.info("Posted blocked comment to PR", { pr: ctx.prNumber });
       return transition(ctx, "blocked", patch);
     }
 
     if (review.decision === "changes_requested") {
-      const mustFixList = review.mustFix.map((item) => `- ${item}`).join("\n");
-      const comment = `## 🔍 Review Round ${currentRound}/${maxRounds}\n\n${review.summary}\n\n### Must Fix\n${mustFixList}`;
-      await github.commentOnPr(ctx.prNumber, comment);
-      logger.info("Posted review comment to PR", { pr: ctx.prNumber, round: currentRound });
-
       if (currentRound >= maxRounds) {
         logger.warn("Max review rounds reached, proceeding as-is", { round: currentRound, maxRounds });
         return transition(ctx, "watching_ci", patch);
@@ -277,10 +307,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       return transition(ctx, "fixing", { ...patch, fixTrigger: "review" as const });
     }
 
-    // approve — post summary and proceed to CI
-    const comment = `## ✅ Review Approved (Round ${currentRound})\n\n${review.summary}`;
-    await github.commentOnPr(ctx.prNumber, comment);
-    logger.info("Posted approval comment to PR", { pr: ctx.prNumber });
+    // approve
     return transition(ctx, "watching_ci", patch);
   };
 
