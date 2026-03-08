@@ -10,6 +10,7 @@ describe("serializeConfig", () => {
   it("serializes all fields", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 5,
+      maxReviewRounds: 1,
       autoMerge: true,
       dryRun: false,
       base: "develop",
@@ -20,6 +21,7 @@ describe("serializeConfig", () => {
     expect(result).toBe(
       [
         "maxFixAttempts: 5",
+        "maxReviewRounds: 1",
         "autoMerge: true",
         "dryRun: false",
         "base: develop",
@@ -33,6 +35,7 @@ describe("serializeConfig", () => {
   it("includes backend and model when present", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 3,
+      maxReviewRounds: 1,
       autoMerge: false,
       dryRun: false,
       base: "main",
@@ -49,6 +52,7 @@ describe("serializeConfig", () => {
   it("omits backend and model when undefined", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 3,
+      maxReviewRounds: 1,
       autoMerge: false,
       dryRun: false,
       base: "main",
@@ -63,6 +67,7 @@ describe("serializeConfig", () => {
   it("omits skip line when skip is empty array", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 3,
+      maxReviewRounds: 1,
       autoMerge: false,
       dryRun: false,
       base: "main",
@@ -74,6 +79,7 @@ describe("serializeConfig", () => {
     expect(result).toBe(
       [
         "maxFixAttempts: 3",
+        "maxReviewRounds: 1",
         "autoMerge: false",
         "dryRun: false",
         "base: main",
@@ -86,6 +92,7 @@ describe("buildResolvedConfigBlock", () => {
   it("wraps config in aidev code fence", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 3,
+      maxReviewRounds: 1,
       autoMerge: false,
       dryRun: false,
       base: "main",
@@ -97,6 +104,7 @@ describe("buildResolvedConfigBlock", () => {
       [
         "```aidev",
         "maxFixAttempts: 3",
+        "maxReviewRounds: 1",
         "autoMerge: false",
         "dryRun: false",
         "base: main",

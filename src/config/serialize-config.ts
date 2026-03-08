@@ -3,6 +3,7 @@ import type { ResolvedConfig } from "./issue-config.js";
 export function serializeConfig(config: ResolvedConfig): string {
   const lines: string[] = [
     `maxFixAttempts: ${config.maxFixAttempts}`,
+    `maxReviewRounds: ${config.maxReviewRounds}`,
     `autoMerge: ${config.autoMerge}`,
     `dryRun: ${config.dryRun}`,
     `base: ${config.base}`,

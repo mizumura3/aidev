@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../../src/agents/reviewer.js", () => ({
   runReviewer: vi.fn(async () => ({
     decision: "approve",
+
     mustFix: [],
     summary: "Looks good",
   })),
@@ -37,6 +38,8 @@ function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
     branch: "aidev/issue-1",
     maxFixAttempts: 3,
     fixAttempts: 0,
+    maxReviewRounds: 1,
+    reviewRound: 0,
     dryRun: false,
     autoMerge: false,
     issueLabels: [],
@@ -808,6 +811,253 @@ describe("reviewing handler", () => {
     await handlers.reviewing!(ctx);
 
     expect(diff).toHaveBeenCalledWith("main", ctx.cwd);
+  });
+
+  it("increments reviewRound on each review", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "approve",
+  
+      mustFix: [],
+      summary: "LGTM",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      reviewRound: 0,
+      maxReviewRounds: 3,
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.ctx.reviewRound).toBe(1);
+  });
+
+  it("transitions to committing immediately on approve regardless of remaining rounds", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "approve",
+  
+      mustFix: [],
+      summary: "LGTM",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      reviewRound: 0,
+      maxReviewRounds: 5,
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    // approve → committing immediately, no more rounds
+    expect(result.nextState).toBe("committing");
+  });
+
+  it("transitions to committing when changes_requested but max rounds reached", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "changes_requested",
+  
+      mustFix: ["Fix naming"],
+      summary: "Needs work",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      reviewRound: 2,
+      maxReviewRounds: 3,
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    // max rounds reached, commit as-is even with changes_requested
+    expect(result.nextState).toBe("committing");
+  });
+
+  it("transitions to blocked on needs_discussion", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "needs_discussion",
+  
+      mustFix: [],
+      reason: "Approach contradicts existing architecture",
+      summary: "Needs human input",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      reviewRound: 0,
+      maxReviewRounds: 3,
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.nextState).toBe("blocked");
+  });
+
+  it("preserves reviewRound through changes_requested → implementing cycle", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "changes_requested",
+  
+      mustFix: ["Fix the naming"],
+      summary: "Needs changes",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      reviewRound: 1,
+      maxReviewRounds: 5,
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.nextState).toBe("implementing");
+    // reviewRound should be incremented to 2
+    expect(result.ctx.reviewRound).toBe(2);
+  });
+
+  it("defaults maxReviewRounds to 1 (backward compatible single review)", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "approve",
+  
+      mustFix: [],
+      summary: "LGTM",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      // no maxReviewRounds — defaults to 1
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    // With default maxReviewRounds=1, approve on round 1 → committing
+    expect(result.nextState).toBe("committing");
+  });
+});
+
+describe("reviewing handler — needs_discussion posts comment before blocking", () => {
+  it("posts review comment to issue on needs_discussion", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "needs_discussion",
+  
+      mustFix: [],
+      reason: "The approach is fundamentally wrong",
+      summary: "Needs human input",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.nextState).toBe("blocked");
+    expect(deps.github.commentOnIssue).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("The approach is fundamentally wrong"),
+    );
+  });
+
+  it("posts review comment to PR on needs_discussion in PR mode", async () => {
+    const { runReviewer } = await import("../../src/agents/reviewer.js");
+    (runReviewer as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      decision: "needs_discussion",
+  
+      mustFix: [],
+      reason: "Design issue",
+      summary: "Needs human input",
+    });
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      targetKind: "pr",
+      prNumber: 5,
+      state: "reviewing",
+      plan: {
+        summary: "Do X",
+        steps: ["Step 1"],
+        filesToTouch: ["a.ts"],
+        tests: ["a.test.ts"],
+        risks: [],
+        acceptanceCriteria: ["X done"],
+      },
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.nextState).toBe("blocked");
+    expect(deps.github.commentOnPr).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining("Design issue"),
+    );
   });
 });
 

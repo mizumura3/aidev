@@ -7,6 +7,7 @@ export type { SkippableState } from "../types.js";
 const IssueConfigSchema = z
   .object({
     maxFixAttempts: z.number().int().positive().optional(),
+    maxReviewRounds: z.number().int().positive().optional(),
     autoMerge: z.boolean().optional(),
     dryRun: z.boolean().optional(),
     base: z.string().optional(),
@@ -20,6 +21,7 @@ export type IssueConfig = z.infer<typeof IssueConfigSchema>;
 
 export interface ResolvedConfig {
   maxFixAttempts: number;
+  maxReviewRounds: number;
   autoMerge: boolean;
   dryRun: boolean;
   base: string;
@@ -113,6 +115,11 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
   if (typeof raw.maxFixAttempts === "string") {
     const n = toNumber(raw.maxFixAttempts);
     if (n !== undefined) obj.maxFixAttempts = n;
+  }
+
+  if (typeof raw.maxReviewRounds === "string") {
+    const n = toNumber(raw.maxReviewRounds);
+    if (n !== undefined) obj.maxReviewRounds = n;
   }
 
   if (typeof raw.autoMerge === "string") {

@@ -143,4 +143,22 @@ describe("parseIssueConfig", () => {
     expect(result.model).toBeUndefined();
     expect(result.maxFixAttempts).toBe(3);
   });
+
+  it("parses maxReviewRounds", () => {
+    const body = "```aidev\nmaxReviewRounds: 5\n```";
+    const result = parseIssueConfig(body);
+    expect(result.maxReviewRounds).toBe(5);
+  });
+
+  it("ignores non-numeric maxReviewRounds", () => {
+    const body = "```aidev\nmaxReviewRounds: abc\n```";
+    const result = parseIssueConfig(body);
+    expect(result.maxReviewRounds).toBeUndefined();
+  });
+
+  it("ignores zero maxReviewRounds", () => {
+    const body = "```aidev\nmaxReviewRounds: 0\n```";
+    const result = parseIssueConfig(body);
+    expect(result.maxReviewRounds).toBeUndefined();
+  });
 });
