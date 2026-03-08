@@ -12,8 +12,13 @@ vi.mock("../../src/agents/codex-runner.js", () => ({
   })),
 }));
 
+vi.mock("../../src/agents/instructions-aware-runner.js", () => ({
+  InstructionsAwareRunner: vi.fn((inner: unknown) => inner),
+}));
+
 import { createRunner, registerBackend } from "../../src/agents/runner-factory.js";
 import { ClaudeCodeRunner } from "../../src/agents/claude-code-runner.js";
+import { InstructionsAwareRunner } from "../../src/agents/instructions-aware-runner.js";
 
 describe("createRunner", () => {
   it("uses a custom backend registered via registerBackend", () => {
@@ -31,10 +36,11 @@ describe("createRunner", () => {
     expect(typeof runner.run).toBe("function");
   });
 
-  it("returns a CodexRunner for 'codex' backend", () => {
+  it("returns a CodexRunner wrapped with InstructionsAwareRunner for 'codex' backend", () => {
     const runner = createRunner({ backend: "codex", model: "o4-mini" });
     expect(runner).toBeDefined();
     expect(typeof runner.run).toBe("function");
+    expect(InstructionsAwareRunner).toHaveBeenCalled();
   });
 
   it("throws for unknown backend with available backends listed", () => {

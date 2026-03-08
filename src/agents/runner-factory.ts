@@ -3,6 +3,7 @@ import type { BackendConfig } from "./backend-config.js";
 import { DEFAULT_BACKEND } from "./backend-config.js";
 import { ClaudeCodeRunner } from "./claude-code-runner.js";
 import { CodexRunner } from "./codex-runner.js";
+import { InstructionsAwareRunner } from "./instructions-aware-runner.js";
 
 type RunnerFactory = (config: BackendConfig) => AgentRunner;
 
@@ -15,7 +16,7 @@ registry.set("claude-code", (config) => {
   return new ClaudeCodeRunner();
 });
 
-registry.set("codex", (config) => new CodexRunner(config));
+registry.set("codex", (config) => new InstructionsAwareRunner(new CodexRunner(config)));
 
 export function registerBackend(name: string, factory: RunnerFactory): void {
   registry.set(name, factory);

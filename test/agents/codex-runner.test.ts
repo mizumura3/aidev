@@ -13,13 +13,8 @@ vi.mock("@openai/codex-sdk", () => ({
   })),
 }));
 
-vi.mock("../../src/agents/instructions-loader.js", () => ({
-  loadProjectInstructions: vi.fn(async () => "mock instructions"),
-}));
-
 import { Codex } from "@openai/codex-sdk";
 import { CodexRunner } from "../../src/agents/codex-runner.js";
-import { loadProjectInstructions } from "../../src/agents/instructions-loader.js";
 import type { AgentRunOptions } from "../../src/agents/runner.js";
 
 function makeOptions(overrides: Partial<AgentRunOptions> = {}): AgentRunOptions {
@@ -41,22 +36,27 @@ describe("CodexRunner", () => {
     vi.clearAllMocks();
   });
 
-  it("constructs Codex with apiKey when provided", async () => {
-    const runner = new CodexRunner({ apiKey: "sk-test-key", model: "o4-mini" });
-    mockRun.mockResolvedValueOnce({ finalResponse: "done", items: [], usage: null });
-
-    await runner.run("hello", makeOptions());
+  it("constructs Codex with apiKey in constructor", () => {
+    new CodexRunner({ apiKey: "sk-test-key", model: "o4-mini" });
 
     expect(Codex).toHaveBeenCalledWith({ apiKey: "sk-test-key" });
   });
 
-  it("constructs Codex without apiKey when not provided", async () => {
-    const runner = new CodexRunner({});
-    mockRun.mockResolvedValueOnce({ finalResponse: "done", items: [], usage: null });
-
-    await runner.run("hello", makeOptions());
+  it("constructs Codex without apiKey when not provided", () => {
+    new CodexRunner({});
 
     expect(Codex).toHaveBeenCalledWith({});
+  });
+
+  it("reuses the same Codex instance across multiple run() calls", async () => {
+    const runner = new CodexRunner({ apiKey: "sk-test-key" });
+    mockRun.mockResolvedValue({ finalResponse: "done", items: [], usage: null });
+
+    await runner.run("hello", makeOptions());
+    await runner.run("world", makeOptions());
+
+    // Codex constructor called once (in constructor), not per run()
+    expect(Codex).toHaveBeenCalledTimes(1);
   });
 
   it("starts thread with correct options", async () => {
@@ -72,22 +72,7 @@ describe("CodexRunner", () => {
     });
   });
 
-  it("loads project instructions and prepends to prompt", async () => {
-    const runner = new CodexRunner({});
-    mockRun.mockResolvedValueOnce({ finalResponse: "result", items: [], usage: null });
-
-    await runner.run("do something", makeOptions({ cwd: "/my/project" }));
-
-    expect(loadProjectInstructions).toHaveBeenCalledWith("/my/project");
-    // The prompt should include instructions
-    const calledPrompt = mockRun.mock.calls[0]![0] as string;
-    expect(calledPrompt).toContain("mock instructions");
-    expect(calledPrompt).toContain("do something");
-    expect(calledPrompt).toContain("<project-instructions>");
-  });
-
-  it("skips instructions prefix when instructions are empty", async () => {
-    vi.mocked(loadProjectInstructions).mockResolvedValueOnce("");
+  it("passes prompt directly without instruction loading", async () => {
     const runner = new CodexRunner({});
     mockRun.mockResolvedValueOnce({ finalResponse: "result", items: [], usage: null });
 
@@ -124,13 +109,13 @@ describe("CodexRunner", () => {
     );
   });
 
-  it("returns empty string on error", async () => {
+  it("propagates errors to the caller", async () => {
     const runner = new CodexRunner({});
     mockRunStreamed.mockRejectedValueOnce(new Error("SDK error"));
 
-    const result = await runner.run("hello", makeOptions({ onMessage: vi.fn() }));
-
-    expect(result).toBe("");
+    await expect(
+      runner.run("hello", makeOptions({ onMessage: vi.fn() })),
+    ).rejects.toThrow("SDK error");
   });
 
   it("uses run() when no onMessage callback", async () => {
