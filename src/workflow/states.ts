@@ -29,14 +29,6 @@ export interface Deps {
   onProgress?: (message: ProgressEvent) => void;
 }
 
-function transition(
-  ctx: RunContext,
-  nextState: RunState,
-  patch?: Partial<RunContext>
-) {
-  return { nextState, ctx: { ...ctx, ...patch, state: nextState } };
-}
-
 function shouldAutoMerge(ctx: RunContext): boolean {
   return ctx.autoMerge || ctx.issueLabels.includes("auto-merge");
 }
@@ -51,10 +43,23 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
   };
 }
 
+const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed"]);
+
 export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
   const defaultRunner = deps.runner;
   const runnerByRunId = new Map<string, AgentRunner>();
+
+  function transition(
+    ctx: RunContext,
+    nextState: RunState,
+    patch?: Partial<RunContext>
+  ) {
+    if (terminalStates.has(nextState)) {
+      runnerByRunId.delete(ctx.runId);
+    }
+    return { nextState, ctx: { ...ctx, ...patch, state: nextState } };
+  }
 
   function getRunner(ctx: RunContext): AgentRunner {
     return runnerByRunId.get(ctx.runId) ?? defaultRunner;
