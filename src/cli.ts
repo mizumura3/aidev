@@ -17,7 +17,7 @@ import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
-import { RunStateSchema, TERMINAL_STATES, type RunContext, type TerminalState } from "./types.js";
+import { RunStateSchema, TERMINAL_STATES, isTerminalState, type RunContext, type TerminalState } from "./types.js";
 import { formatElapsed, formatProgressEvent } from "./agents/shared.js";
 import { formatErrorDetails } from "./util/error.js";
 
@@ -332,7 +332,7 @@ export function createCli() {
 
       let exitCode = 0;
       let worktreeCreated = false;
-      let keepWorktree = false;
+      let resultState: string | undefined;
 
       // Determine whether to reuse existing worktree on resume.
       // Terminal states get a fresh worktree, except:
@@ -345,13 +345,22 @@ export function createCli() {
       try {
         if (shouldReuseWorktree) {
           if (!existsSync(worktreePath)) {
-            logger.error("Worktree not found for resume. The previous worktree may have been cleaned up.", { path: worktreePath });
-            await logger.flush();
-            process.exit(1);
+            // Worktree was deleted between handoff and resume (e.g. manual cleanup).
+            // Uncommitted work is lost — recreate worktree and restart from init.
+            logger.warn("Worktree not found for resume — recreating from scratch", {
+              path: worktreePath,
+              originalState: ctx.state,
+            });
+            await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
+            await git.addWorktree(worktreePath, ctx.base, originalCwd);
+            ctx.state = "init";
+            ctx.cwd = worktreePath;
+            worktreeCreated = true;
+          } else {
+            ctx.cwd = worktreePath;
+            worktreeCreated = true;
+            logger.info("Reusing existing worktree for resume", { path: worktreePath });
           }
-          ctx.cwd = worktreePath;
-          worktreeCreated = true;
-          logger.info("Reusing existing worktree for resume", { path: worktreePath });
         } else {
           // Remove stale worktree from a previous interrupted run, if any
           await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
@@ -378,13 +387,14 @@ export function createCli() {
             }
           },
           onComplete: async (finalCtx) => {
+            if (!isTerminalState(finalCtx.state)) return;
             const elapsedMs = Math.round(performance.now() - workflowStart);
             const message = formatSlackMessage({
               targetKind: finalCtx.targetKind,
               targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
               issueTitle: finalCtx.issueTitle,
               repo: finalCtx.repo,
-              finalState: finalCtx.state as TerminalState,
+              finalState: finalCtx.state,
               elapsedMs,
               prNumber: finalCtx.prNumber,
             });
@@ -404,7 +414,7 @@ export function createCli() {
           process.stdout.write(JSON.stringify(output) + "\n");
         } else if (result.state === "manual_handoff") {
           logger.warn("Devloop handed off - needs human intervention", { runId: ctx.runId });
-          keepWorktree = true;
+          resultState = result.state;
           const output = {
             status: "manual_handoff" as const,
             runId: result.runId,
@@ -444,7 +454,7 @@ export function createCli() {
         process.stdout.write(JSON.stringify(output) + "\n");
         exitCode = 1;
       } finally {
-        if (worktreeCreated && !keepWorktree) {
+        if (worktreeCreated && resultState !== "manual_handoff") {
           await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
             logger.error("Worktree cleanup failed", {
               path: worktreePath,
@@ -452,7 +462,7 @@ export function createCli() {
             })
           );
         }
-        if (keepWorktree) {
+        if (resultState === "manual_handoff") {
           logger.info("Worktree preserved for resume", { path: worktreePath });
         }
       }
@@ -573,13 +583,14 @@ export function createCli() {
                 onTransition: (from, to) =>
                   runLogger.info("State transition", { from, to }),
                 onComplete: async (finalCtx) => {
+                  if (!isTerminalState(finalCtx.state)) return;
                   const elapsedMs = Math.round(performance.now() - issueStart);
                   const message = formatSlackMessage({
                     targetKind: finalCtx.targetKind,
                     targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
                     issueTitle: finalCtx.issueTitle,
                     repo: finalCtx.repo,
-                    finalState: finalCtx.state as TerminalState,
+                    finalState: finalCtx.state,
                     elapsedMs,
                     prNumber: finalCtx.prNumber,
                   });

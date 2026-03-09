@@ -534,6 +534,38 @@ describe("withTimeout", () => {
     expect(clearSpy).toHaveBeenCalled();
     clearSpy.mockRestore();
   });
+
+  it("injects _abortSignal into handler ctx", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const inner: StateHandler = async (ctx) => {
+      receivedSignal = ctx._abortSignal;
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+
+    const wrapped = withTimeout(inner, 60000);
+    const ctx = makeCtx({ state: "implementing" });
+    await wrapped(ctx);
+
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal!.aborted).toBe(false);
+  });
+
+  it("aborts _abortSignal when timeout fires", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const inner: StateHandler = async (ctx) => {
+      receivedSignal = ctx._abortSignal;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+
+    const wrapped = withTimeout(inner, 30);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal!.aborted).toBe(true);
+  });
 });
 
 describe("runWorkflow with stateTimeouts", () => {

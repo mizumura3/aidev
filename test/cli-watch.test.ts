@@ -65,6 +65,21 @@ import { createGitHubAdapter } from "../src/adapters/github.js";
 import { createStateHandlers } from "../src/workflow/states.js";
 import { runWorkflow } from "../src/workflow/engine.js";
 
+function makeMockGithub(overrides: Record<string, any> = {}) {
+  return {
+    listIssuesByLabel: vi.fn(async () => []),
+    getIssue: vi.fn(),
+    getAuthenticatedUser: vi.fn(async () => "testuser"),
+    commentOnIssue: vi.fn(),
+    createPr: vi.fn(),
+    getCiStatus: vi.fn(),
+    mergePr: vi.fn(),
+    closeIssue: vi.fn(),
+    getCheckRunLogs: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("watch command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -208,19 +223,11 @@ describe("watch command", () => {
   });
 
   it("preserves worktree when watch mode issue ends in manual_handoff", async () => {
-    const mockGithub = {
+    const mockGithub = makeMockGithub({
       listIssuesByLabel: vi.fn(async () => [
         { number: 55, title: "Timeout issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
-      getIssue: vi.fn(),
-      getAuthenticatedUser: vi.fn(async () => "testuser"),
-      commentOnIssue: vi.fn(),
-      createPr: vi.fn(),
-      getCiStatus: vi.fn(),
-      mergePr: vi.fn(),
-      closeIssue: vi.fn(),
-      getCheckRunLogs: vi.fn(),
-    };
+    });
     vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
 
     const mockRunWorkflow = vi.mocked(runWorkflow);
@@ -263,19 +270,11 @@ describe("watch command", () => {
   });
 
   it("cleans up worktree when watch mode issue completes normally", async () => {
-    const mockGithub = {
+    const mockGithub = makeMockGithub({
       listIssuesByLabel: vi.fn(async () => [
         { number: 56, title: "Normal issue", body: "body", labels: ["ai:run"], author: "testuser" },
       ]),
-      getIssue: vi.fn(),
-      getAuthenticatedUser: vi.fn(async () => "testuser"),
-      commentOnIssue: vi.fn(),
-      createPr: vi.fn(),
-      getCiStatus: vi.fn(),
-      mergePr: vi.fn(),
-      closeIssue: vi.fn(),
-      getCheckRunLogs: vi.fn(),
-    };
+    });
     vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
 
     const mockRunWorkflow = vi.mocked(runWorkflow);
@@ -1113,7 +1112,7 @@ describe("run command", () => {
     }
   });
 
-  it("errors when resuming non-terminal state but worktree does not exist", async () => {
+  it("recreates worktree from init when resuming non-terminal state but worktree does not exist", async () => {
     const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -1149,6 +1148,12 @@ describe("run command", () => {
     mockExistsSync.mockReturnValue(false);
 
     try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
       const cli = createCli();
       await cli.parseAsync([
         "node",
@@ -1164,8 +1169,10 @@ describe("run command", () => {
         "--yes",
       ]);
 
-      // Should exit with error
-      expect(process.exit).toHaveBeenCalledWith(1);
+      // Worktree missing → recreated from scratch, state reset to init
+      expect(mockAddWorktree).toHaveBeenCalled();
+      const ctx = mockRunWorkflow.mock.calls[0][0];
+      expect(ctx.state).toBe("init");
     } finally {
       mockExistsSync.mockReturnValue(false);
       process.env.HOME = originalHome;
@@ -1463,8 +1470,7 @@ describe("run command", () => {
     const originalHome = process.env.HOME;
     process.env.HOME = tempHome;
 
-    const mockGithub = {
-      listIssuesByLabel: vi.fn(async () => []),
+    vi.mocked(createGitHubAdapter).mockReturnValue(makeMockGithub({
       getIssue: vi.fn(async () => ({
         number: 42,
         title: "Test issue",
@@ -1472,15 +1478,7 @@ describe("run command", () => {
         labels: [],
         author: "testuser",
       })),
-      getAuthenticatedUser: vi.fn(async () => "testuser"),
-      commentOnIssue: vi.fn(),
-      createPr: vi.fn(),
-      getCiStatus: vi.fn(),
-      mergePr: vi.fn(),
-      closeIssue: vi.fn(),
-      getCheckRunLogs: vi.fn(),
-    };
-    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+    }));
 
     try {
       const mockRunWorkflow = vi.mocked(runWorkflow);
@@ -1515,8 +1513,7 @@ describe("run command", () => {
   });
 
   it("uses --base for worktree creation", async () => {
-    const mockGithub = {
-      listIssuesByLabel: vi.fn(async () => []),
+    vi.mocked(createGitHubAdapter).mockReturnValue(makeMockGithub({
       getIssue: vi.fn(async () => ({
         number: 42,
         title: "Test issue",
@@ -1524,15 +1521,7 @@ describe("run command", () => {
         labels: [],
         author: "testuser",
       })),
-      getAuthenticatedUser: vi.fn(async () => "testuser"),
-      commentOnIssue: vi.fn(),
-      createPr: vi.fn(),
-      getCiStatus: vi.fn(),
-      mergePr: vi.fn(),
-      closeIssue: vi.fn(),
-      getCheckRunLogs: vi.fn(),
-    };
-    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+    }));
 
     const mockRunWorkflow = vi.mocked(runWorkflow);
     mockRunWorkflow.mockImplementation(async (ctx: any) => ({

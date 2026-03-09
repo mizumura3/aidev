@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SkippableStateSchema, LanguageSchema, RunStateSchema } from "../types.js";
 import type { SkippableState, Language, RunState } from "../types.js";
+import { MIN_STATE_TIMEOUT_MS } from "../workflow/engine.js";
 
 export type { SkippableState, Language } from "../types.js";
 export { LanguageSchema } from "../types.js";
@@ -60,6 +61,10 @@ function parseYamlLike(block: string): Record<string, string | string[] | Record
 
   function flushCurrent() {
     if (currentKey) {
+      // List items (- item) and map items (key: value) under the same key are
+      // mutually exclusive. If both are present (malformed input), list wins
+      // and map entries are silently discarded. This is intentional — our
+      // config format doesn't support mixed nested structures.
       if (currentList && currentList.length > 0) result[currentKey] = currentList;
       else if (currentMap && Object.keys(currentMap).length > 0) result[currentKey] = currentMap;
     }
@@ -177,7 +182,7 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
     for (const [key, val] of Object.entries(map)) {
       if (!RunStateSchema.safeParse(key).success) continue;
       const n = Number(val);
-      if (Number.isFinite(n) && n > 0) {
+      if (Number.isFinite(n) && n >= MIN_STATE_TIMEOUT_MS) {
         timeouts[key as RunState] = n;
       }
     }

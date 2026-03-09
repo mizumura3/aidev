@@ -216,4 +216,44 @@ describe("parseIssueConfig", () => {
     const result = parseIssueConfig(body);
     expect(result.stateTimeouts).toBeUndefined();
   });
+
+  it("rejects stateTimeouts below MIN_STATE_TIMEOUT_MS (5000ms)", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 1",
+      "  reviewing: 10000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    // implementing: 1ms is below 5000ms minimum → rejected
+    // reviewing: 10000ms is above minimum → accepted
+    expect(result.stateTimeouts).toEqual({
+      reviewing: 10000,
+    });
+  });
+
+  it("rejects stateTimeouts of exactly MIN_STATE_TIMEOUT_MS - 1", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 4999",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toBeUndefined();
+  });
+
+  it("accepts stateTimeouts of exactly MIN_STATE_TIMEOUT_MS", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 5000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toEqual({
+      implementing: 5000,
+    });
+  });
 });

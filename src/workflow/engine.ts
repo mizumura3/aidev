@@ -21,9 +21,23 @@ export interface WorkflowOptions {
 const terminalStates: ReadonlySet<RunState> = new Set(TERMINAL_STATES);
 
 /**
- * Wrap a StateHandler with a wall-clock timeout.
- * If the handler doesn't complete within `timeoutMs`, the workflow transitions
- * to `manual_handoff` with `_timedOutState` set to the current state.
+ * Minimum allowed state timeout. Values below this threshold are rejected
+ * to prevent accidental instant timeouts (e.g. from malicious issue body config).
+ */
+export const MIN_STATE_TIMEOUT_MS = 5_000;
+
+/**
+ * Wrap a StateHandler with a wall-clock timeout and cooperative cancellation.
+ *
+ * When the timeout fires:
+ * 1. An `AbortSignal` injected into `ctx._abortSignal` is aborted.
+ * 2. The workflow transitions to `manual_handoff`.
+ *
+ * **Important**: Cancellation is cooperative. The handler continues running
+ * in the background after timeout unless it checks `ctx._abortSignal?.aborted`
+ * and terminates early. Callers should propagate the signal to child processes
+ * and cancellable APIs (e.g. `fetch(url, { signal })`) where possible.
+ *
  * Pass `Infinity` or a non-positive value to effectively disable the timeout.
  */
 export function withTimeout(
@@ -34,8 +48,12 @@ export function withTimeout(
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return handler;
 
   return (ctx) => {
+    const ac = new AbortController();
+    const ctxWithSignal = { ...ctx, _abortSignal: ac.signal };
+
     return new Promise<{ nextState: RunState; ctx: RunContext }>((resolve, reject) => {
       const timer = setTimeout(() => {
+        ac.abort();
         logger?.warn(`State ${ctx.state} timed out after ${timeoutMs}ms — handing off`, {
           state: ctx.state,
           timeoutMs,
@@ -50,7 +68,7 @@ export function withTimeout(
         });
       }, timeoutMs);
 
-      handler(ctx).then(
+      handler(ctxWithSignal).then(
         (result) => {
           clearTimeout(timer);
           resolve(result);
