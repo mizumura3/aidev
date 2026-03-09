@@ -1563,3 +1563,115 @@ describe("closing_issue handler", () => {
     expect(deps.github.closeIssue).not.toHaveBeenCalled();
   });
 });
+
+describe("step-specific backends", () => {
+  it("uses step-specific backend for planning when configured", async () => {
+    const stepRunner = { run: vi.fn(async () => "") };
+    const deps = makeDeps();
+    (deps.resolveRunner as ReturnType<typeof vi.fn>).mockImplementation((config: { backend: string }) => {
+      if (config.backend === "codex-cli") return stepRunner;
+      return deps.runner;
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "planning",
+      stepBackends: { planning: "codex-cli" },
+    });
+
+    await handlers.planning!(ctx);
+
+    expect(deps.resolveRunner).toHaveBeenCalledWith({ backend: "codex-cli" });
+  });
+
+  it("falls back to default runner when step backend is not set", async () => {
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "planning",
+    });
+
+    await handlers.planning!(ctx);
+
+    expect(deps.resolveRunner).not.toHaveBeenCalled();
+  });
+
+  it("shares runner instance for same backend across steps", async () => {
+    const stepRunner = { run: vi.fn(async () => "") };
+    const deps = makeDeps();
+    (deps.resolveRunner as ReturnType<typeof vi.fn>).mockReturnValue(stepRunner);
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "planning",
+      stepBackends: { planning: "codex-cli", reviewing: "codex-cli" },
+      plan: {
+        summary: "test",
+        steps: ["step1"],
+        filesToTouch: [],
+        tests: [],
+        risks: [],
+        acceptanceCriteria: [],
+      },
+      prNumber: 42,
+    });
+
+    await handlers.planning!(ctx);
+
+    // reviewing should reuse the cached runner
+    const reviewCtx = makeCtx({
+      state: "reviewing",
+      stepBackends: { planning: "codex-cli", reviewing: "codex-cli" },
+      plan: ctx.plan,
+      prNumber: 42,
+    });
+    await handlers.reviewing!(reviewCtx);
+
+    // resolveRunner should only be called once since both use "codex-cli"
+    expect(deps.resolveRunner).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges step backends from issue body config into ctx", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nplanning: codex-cli\nimplementing: openai\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.stepBackends).toEqual({
+      planning: "codex-cli",
+      implementing: "openai",
+    });
+  });
+
+  it("CLI step backends take precedence over issue body", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nplanning: from-issue\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      stepBackends: { planning: "from-cli" },
+      _cliExplicit: new Set(["planning"]),
+    });
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.stepBackends?.planning).toBe("from-cli");
+  });
+});

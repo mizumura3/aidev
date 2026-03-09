@@ -104,6 +104,16 @@ function createFilePersistence(baseDir: string): Persistence {
   };
 }
 
+import type { StepBackends } from "./types.js";
+
+function buildStepBackends(opts: Record<string, unknown>): StepBackends | undefined {
+  const steps: StepBackends = {};
+  for (const step of ["planning", "implementing", "reviewing", "fixing"] as const) {
+    if (typeof opts[step] === "string") steps[step] = opts[step];
+  }
+  return Object.keys(steps).length > 0 ? steps : undefined;
+}
+
 function resolveBackendConfig(opts: { backend?: string; model?: string }): BackendConfig {
   return {
     backend: opts.backend ?? process.env.AIDEV_BACKEND ?? DEFAULT_BACKEND,
@@ -136,7 +146,11 @@ export function createCli() {
     .option("--verbose", "Emit JSONL progress lines to stderr for external agent observability", false)
     .option("--backend <name>", "Backend runner to use", DEFAULT_BACKEND)
     .option("--model <model>", "Model to use with the backend")
-    .option("--language <lang>", "Output language (ja or en)", "ja");
+    .option("--language <lang>", "Output language (ja or en)", "ja")
+    .option("--planning <backend>", "Backend for the planning step")
+    .option("--implementing <backend>", "Backend for the implementing step")
+    .option("--reviewing <backend>", "Backend for the reviewing step")
+    .option("--fixing <backend>", "Backend for the fixing step");
 
   runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
@@ -244,6 +258,10 @@ export function createCli() {
           backend: "backend",
           model: "model",
           language: "language",
+          planning: "planning",
+          implementing: "implementing",
+          reviewing: "reviewing",
+          fixing: "fixing",
         };
         for (const [ctxKey, cliName] of Object.entries(flagMap)) {
           if (runCmd.getOptionValueSource(cliName) === "cli") {
@@ -272,6 +290,7 @@ export function createCli() {
           issueLabels: [],
           skipStates: [],
           skipAuthorCheck: opts.allowForeignIssues,
+          stepBackends: buildStepBackends(opts),
           _cliExplicit: cliExplicit.size > 0 ? cliExplicit : undefined,
         };
       }

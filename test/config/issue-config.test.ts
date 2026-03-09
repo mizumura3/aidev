@@ -176,4 +176,29 @@ describe("parseIssueConfig", () => {
     expect(result.language).toBeUndefined();
     expect(result.maxFixAttempts).toBe(3);
   });
+
+  it("parses step-specific backend fields", () => {
+    const body = "```aidev\nplanning: codex-cli\nimplementing: claude-code\nreviewing: codex-cli\nfixing: claude-code\n```";
+    const result = parseIssueConfig(body);
+    expect(result.planning).toBe("codex-cli");
+    expect(result.implementing).toBe("claude-code");
+    expect(result.reviewing).toBe("codex-cli");
+    expect(result.fixing).toBe("claude-code");
+  });
+
+  it("parses partial step backend fields", () => {
+    const body = "```aidev\nplanning: codex-cli\n```";
+    const result = parseIssueConfig(body);
+    expect(result.planning).toBe("codex-cli");
+    expect(result.implementing).toBeUndefined();
+    expect(result.reviewing).toBeUndefined();
+    expect(result.fixing).toBeUndefined();
+  });
+
+  it("ignores empty step backend values", () => {
+    const body = "```aidev\nplanning:\nmaxFixAttempts: 3\n```";
+    const result = parseIssueConfig(body);
+    expect(result.planning).toBeUndefined();
+    expect(result.maxFixAttempts).toBe(3);
+  });
 });

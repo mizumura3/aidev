@@ -68,6 +68,44 @@ describe("serializeConfig", () => {
     expect(result).not.toContain("model");
   });
 
+  it("includes step-specific backends when present", () => {
+    const config: ResolvedConfig = {
+      maxFixAttempts: 3,
+      maxReviewRounds: 1,
+      autoMerge: false,
+      dryRun: false,
+      base: "main",
+      language: "ja",
+      skip: [],
+      planning: "codex-cli",
+      implementing: "claude-code",
+    };
+
+    const result = serializeConfig(config);
+    expect(result).toContain("planning: codex-cli");
+    expect(result).toContain("implementing: claude-code");
+    expect(result).not.toContain("reviewing:");
+    expect(result).not.toContain("fixing:");
+  });
+
+  it("omits step backends when undefined", () => {
+    const config: ResolvedConfig = {
+      maxFixAttempts: 3,
+      maxReviewRounds: 1,
+      autoMerge: false,
+      dryRun: false,
+      base: "main",
+      language: "ja",
+      skip: [],
+    };
+
+    const result = serializeConfig(config);
+    expect(result).not.toContain("planning");
+    expect(result).not.toContain("implementing");
+    expect(result).not.toContain("reviewing");
+    expect(result).not.toContain("fixing");
+  });
+
   it("omits skip line when skip is empty array", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 3,

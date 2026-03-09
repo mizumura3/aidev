@@ -1,9 +1,11 @@
 import { z } from "zod";
-import { SkippableStateSchema, LanguageSchema } from "../types.js";
-import type { SkippableState, Language } from "../types.js";
+import { SkippableStateSchema, LanguageSchema, StepNameSchema } from "../types.js";
+import type { SkippableState, Language, StepBackends } from "../types.js";
 
-export type { SkippableState, Language } from "../types.js";
+export type { SkippableState, Language, StepBackends } from "../types.js";
 export { LanguageSchema } from "../types.js";
+
+const STEP_NAMES = StepNameSchema.options;
 
 const IssueConfigSchema = z
   .object({
@@ -16,6 +18,10 @@ const IssueConfigSchema = z
     backend: z.string().optional(),
     model: z.string().optional(),
     language: LanguageSchema.optional(),
+    planning: z.string().optional(),
+    implementing: z.string().optional(),
+    reviewing: z.string().optional(),
+    fixing: z.string().optional(),
   })
   .strict();
 
@@ -31,6 +37,10 @@ export interface ResolvedConfig {
   backend?: string;
   model?: string;
   language: Language;
+  planning?: string;
+  implementing?: string;
+  reviewing?: string;
+  fixing?: string;
 }
 
 /**
@@ -149,6 +159,12 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
 
   if (typeof raw.language === "string" && LanguageSchema.safeParse(raw.language).success) {
     obj.language = raw.language;
+  }
+
+  for (const step of STEP_NAMES) {
+    if (typeof raw[step] === "string" && raw[step].length > 0) {
+      obj[step] = raw[step];
+    }
   }
 
   if (Array.isArray(raw.skip)) {

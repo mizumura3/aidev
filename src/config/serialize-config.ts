@@ -17,6 +17,12 @@ export function serializeConfig(config: ResolvedConfig): string {
     lines.push(`model: ${config.model}`);
   }
 
+  for (const step of ["planning", "implementing", "reviewing", "fixing"] as const) {
+    if (config[step]) {
+      lines.push(`${step}: ${config[step]}`);
+    }
+  }
+
   if (config.skip.length > 0) {
     lines.push("skip:");
     for (const s of config.skip) {

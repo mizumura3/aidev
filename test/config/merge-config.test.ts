@@ -79,4 +79,25 @@ describe("mergeConfigs", () => {
     expect(result).not.toHaveProperty("backend");
     expect(result).not.toHaveProperty("model");
   });
+
+  it("merges step-specific backend fields", () => {
+    const repo: Partial<IssueConfig> = { planning: "codex-cli", implementing: "claude-code" };
+    const issue: Partial<IssueConfig> = { planning: "openai" };
+
+    const result = mergeConfigs(repo, issue, new Set());
+
+    expect(result.planning).toBe("openai");
+    expect(result.implementing).toBe("claude-code");
+  });
+
+  it("excludes step backends when cli-explicit", () => {
+    const repo: Partial<IssueConfig> = { planning: "codex-cli" };
+    const issue: Partial<IssueConfig> = { implementing: "openai" };
+    const cliExplicit = new Set(["planning", "implementing"]);
+
+    const result = mergeConfigs(repo, issue, cliExplicit);
+
+    expect(result).not.toHaveProperty("planning");
+    expect(result).not.toHaveProperty("implementing");
+  });
 });
