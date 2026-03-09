@@ -284,6 +284,10 @@ export function createCli() {
         logFilePath: join(logDir, "run.log"),
       });
 
+      if (opts.resume) {
+        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, targetKind, targetNumber });
+      }
+
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
       const backendConfig = resolveBackendConfig(opts);

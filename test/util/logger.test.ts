@@ -104,6 +104,17 @@ describe("createLogger", () => {
       expect(lines).toHaveLength(1);
     });
 
+    it("does not crash when file write fails", () => {
+      const logFile = "/nonexistent-dir/impossible-path/run.log";
+
+      const logger = createLogger({ minLevel: "info", logFilePath: logFile });
+
+      // Should not throw - logging failure is silently ignored
+      expect(() => logger.info("should not crash")).not.toThrow();
+      // stderr should still work
+      expect(stderrSpy).toHaveBeenCalledTimes(1);
+    });
+
     it("supports string argument for backward compatibility", () => {
       const logger = createLogger("debug");
 

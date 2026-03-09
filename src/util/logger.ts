@@ -41,7 +41,11 @@ export function createLogger(opts: LogLevel | CreateLoggerOptions = "info"): Log
     const output = JSON.stringify(entry);
     process.stderr.write(output + "\n");
     if (logFilePath) {
-      appendFileSync(logFilePath, output + "\n");
+      try {
+        appendFileSync(logFilePath, output + "\n");
+      } catch {
+        // Logging should never crash the application
+      }
     }
   }
 
