@@ -141,7 +141,7 @@ export function createCli() {
   runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const verbose = opts.verbose as boolean;
-      const logger = createLogger(verbose ? "debug" : "info");
+      const logger = createLogger({ minLevel: verbose ? "debug" : "info" });
       const baseDir = join(
         process.env.HOME ?? "~",
         ".aidev",
@@ -186,7 +186,6 @@ export function createCli() {
         if (saved.state === "done" && saved.dryRun) {
           ctx.state = "creating_pr";
         }
-        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, targetKind, targetNumber });
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
         const cwd = opts.cwd;
@@ -276,6 +275,15 @@ export function createCli() {
         };
       }
 
+      // Enable file logging now that runId is known
+      const logDir = join(baseDir, ctx.runId);
+      await mkdir(logDir, { recursive: true });
+      logger.setLogFile(join(logDir, "run.log"));
+
+      if (opts.resume) {
+        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, targetKind, targetNumber });
+      }
+
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
       const backendConfig = resolveBackendConfig(opts);
@@ -319,6 +327,7 @@ export function createCli() {
         if (shouldReuseWorktree) {
           if (!existsSync(worktreePath)) {
             logger.error("Worktree not found for resume. The previous worktree may have been cleaned up.", { path: worktreePath });
+            await logger.flush();
             process.exit(1);
           }
           ctx.cwd = worktreePath;
@@ -413,7 +422,10 @@ export function createCli() {
           );
         }
       }
-      if (exitCode !== 0) process.exit(exitCode);
+      if (exitCode !== 0) {
+        await logger.flush();
+        process.exit(exitCode);
+      }
     });
 
   program
@@ -430,7 +442,12 @@ export function createCli() {
     .option("--language <lang>", "Output language (ja or en)", "ja")
     .action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
-      const logger = createLogger("info");
+      const baseDir = join(process.env.HOME ?? "~", ".aidev", "runs");
+      await mkdir(baseDir, { recursive: true });
+      const logger = createLogger({
+        minLevel: "info",
+        logFilePath: join(baseDir, "watch.log"),
+      });
 
       if (!opts.repo) {
         logger.error("--repo is required (e.g. --repo owner/name)");
@@ -439,7 +456,6 @@ export function createCli() {
 
       const repo = opts.repo;
       const cwd = opts.cwd;
-      const baseDir = join(process.env.HOME ?? "~", ".aidev", "runs");
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
@@ -486,6 +502,13 @@ export function createCli() {
           const worktreePath = join(cwd, ".worktrees", `issue-${issue.number}`);
 
           const runIssue = async () => {
+            const runLogDir = join(baseDir, runId);
+            await mkdir(runLogDir, { recursive: true });
+            const runLogger = createLogger({
+              minLevel: "info",
+              logFilePath: join(runLogDir, "run.log"),
+            });
+
             await git.addWorktree(worktreePath, opts.base, cwd);
             try {
               const ctx: RunContext = {
@@ -511,9 +534,9 @@ export function createCli() {
 
               const issueStart = performance.now();
               await runWorkflow(ctx, handlers, persistence, {
-                logger,
+                logger: runLogger,
                 onTransition: (from, to) =>
-                  logger.info("State transition", { from, to }),
+                  runLogger.info("State transition", { from, to }),
                 onComplete: async (finalCtx) => {
                   const elapsedMs = Math.round(performance.now() - issueStart);
                   const message = formatSlackMessage({
@@ -530,7 +553,7 @@ export function createCli() {
               });
             } finally {
               await git.removeWorktree(worktreePath, cwd).catch((err) =>
-                logger.error("Worktree cleanup failed", {
+                runLogger.error("Worktree cleanup failed", {
                   path: worktreePath,
                   error: String(err),
                 })
