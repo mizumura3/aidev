@@ -102,11 +102,6 @@ function createFilePersistence(baseDir: string): Persistence {
   };
 }
 
-function detectRepo(cwd: string): string {
-  // Try to detect from git remote, fallback to env
-  return process.env.DEVLOOP_REPO ?? "mizumura3/inko";
-}
-
 function resolveBackendConfig(opts: { backend?: string; model?: string }): BackendConfig {
   return {
     backend: opts.backend ?? process.env.AIDEV_BACKEND ?? DEFAULT_BACKEND,
@@ -154,6 +149,11 @@ export function createCli() {
       const targetKind = opts.pr != null ? "pr" : "issue";
       const targetNumber = targetKind === "pr" ? opts.pr : opts.issue;
 
+      if (!opts.repo) {
+        logger.error("--repo is required (e.g. --repo owner/name)");
+        process.exit(1);
+      }
+
       if ((opts.issue == null && opts.pr == null) || (opts.issue != null && opts.pr != null)) {
         logger.error("Specify exactly one of --issue or --pr");
         process.exit(1);
@@ -188,7 +188,7 @@ export function createCli() {
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
         const cwd = opts.cwd;
-        const repo = opts.repo ?? detectRepo(cwd);
+        const repo = opts.repo;
         const ghForConfirm = createGitHubAdapter(repo);
 
         let issue: Issue | undefined;
@@ -411,7 +411,13 @@ export function createCli() {
     .action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const logger = createLogger("info");
-      const repo = opts.repo ?? detectRepo(opts.cwd);
+
+      if (!opts.repo) {
+        logger.error("--repo is required (e.g. --repo owner/name)");
+        process.exit(1);
+      }
+
+      const repo = opts.repo;
       const cwd = opts.cwd;
       const baseDir = join(process.env.HOME ?? "~", ".devloop", "runs");
 

@@ -44,7 +44,7 @@ bun run aidev run --pr <number> --repo <owner/name> --cwd <path>
 |-----------|------|-----------|
 | `--issue <number>` | GitHub Issue 番号 | — |
 | `--pr <number>` | GitHub Pull Request 番号 | — |
-| `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
+| `--repo <owner/name>` | GitHub リポジトリ（必須） | — |
 | `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
 | `--auto-merge` | CI 通過後に自動マージ | `false` |
 | `--base <branch>` | ブランチ作成元のベースブランチまたはタグ | `main` |
@@ -157,7 +157,7 @@ bun run aidev watch --repo <owner/name> --cwd <path>
 | `--interval <seconds>` | ポーリング間隔（秒） | `30` |
 | `--base <branch>` | worktree 作成元のベースブランチまたはタグ | `main` |
 | `--cwd <path>` | 作業ディレクトリ | カレントディレクトリ |
-| `--repo <owner/name>` | GitHub リポジトリ | 自動検出 |
+| `--repo <owner/name>` | GitHub リポジトリ（必須） | — |
 | `--claude-path <path>` | Claude Code バイナリのパス | PATH から自動検出 |
 | `--backend <name>` | 使用するバックエンドランナー | `claude-code` |
 | `--model <model>` | バックエンドで使用するモデル | — |
