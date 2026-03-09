@@ -24,7 +24,7 @@ const terminalStates: ReadonlySet<RunState> = new Set(TERMINAL_STATES);
  * Wrap a StateHandler with a wall-clock timeout.
  * If the handler doesn't complete within `timeoutMs`, the workflow transitions
  * to `manual_handoff` with `_timedOutState` set to the current state.
- * Pass `Infinity` to effectively disable the timeout.
+ * Pass `Infinity` or a non-positive value to effectively disable the timeout.
  */
 export function withTimeout(
   handler: StateHandler,
