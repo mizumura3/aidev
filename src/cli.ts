@@ -25,7 +25,7 @@ function createFilePersistence(baseDir: string): Persistence {
   return {
     async save(ctx) {
       const dir = join(baseDir, ctx.runId);
-      // Directory is created by cli commands before workflow starts
+      await mkdir(dir, { recursive: true });
       await writeFile(join(dir, "state.json"), JSON.stringify(ctx, null, 2));
 
       if (ctx.plan)
@@ -186,7 +186,6 @@ export function createCli() {
         if (saved.state === "done" && saved.dryRun) {
           ctx.state = "creating_pr";
         }
-        logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, targetKind, targetNumber });
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
         const cwd = opts.cwd;
@@ -328,6 +327,7 @@ export function createCli() {
         if (shouldReuseWorktree) {
           if (!existsSync(worktreePath)) {
             logger.error("Worktree not found for resume. The previous worktree may have been cleaned up.", { path: worktreePath });
+            await logger.flush();
             process.exit(1);
           }
           ctx.cwd = worktreePath;
@@ -422,7 +422,10 @@ export function createCli() {
           );
         }
       }
-      if (exitCode !== 0) process.exit(exitCode);
+      if (exitCode !== 0) {
+        await logger.flush();
+        process.exit(exitCode);
+      }
     });
 
   program
