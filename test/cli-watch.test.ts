@@ -993,9 +993,11 @@ describe("run command", () => {
         "--yes",
       ]);
 
-      // Should NOT remove or add worktree — reuse existing
-      expect(mockRemoveWorktree).not.toHaveBeenCalled();
+      // Should NOT add worktree — reuse existing
       expect(mockAddWorktree).not.toHaveBeenCalled();
+
+      // removeWorktree should only be called once in finally (cleanup), not before
+      expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
 
       // ctx.cwd should be the worktree path derived from opts.cwd
       const ctx = mockRunWorkflow.mock.calls[0][0];
@@ -1192,8 +1194,10 @@ describe("run command", () => {
       ]);
 
       // done + dryRun → creating_pr, needs existing changes → reuse worktree
-      expect(mockRemoveWorktree).not.toHaveBeenCalled();
       expect(mockAddWorktree).not.toHaveBeenCalled();
+
+      // removeWorktree should only be called once in finally (cleanup), not before
+      expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
 
       const ctx = mockRunWorkflow.mock.calls[0][0];
       expect(ctx.state).toBe("creating_pr");

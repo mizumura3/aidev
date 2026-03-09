@@ -313,7 +313,7 @@ export function createCli() {
       // Non-terminal states and done+dryRun (→creating_pr) need existing changes preserved.
       const terminalStates = new Set(["done", "failed", "blocked"]);
       const shouldReuseWorktree = opts.resume
-        && !(terminalStates.has(ctx.state) && !(ctx.state === "done" && ctx.dryRun));
+        && (!terminalStates.has(ctx.state) || (ctx.state === "done" && ctx.dryRun));
 
       try {
         if (shouldReuseWorktree) {
@@ -322,6 +322,7 @@ export function createCli() {
             process.exit(1);
           }
           ctx.cwd = worktreePath;
+          worktreeCreated = true;
           logger.info("Reusing existing worktree for resume", { path: worktreePath });
         } else {
           // Remove stale worktree from a previous interrupted run, if any
