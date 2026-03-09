@@ -332,10 +332,12 @@ export function createCli() {
 
       let exitCode = 0;
       let worktreeCreated = false;
+      let keepWorktree = false;
 
       // Determine whether to reuse existing worktree on resume.
-      // Terminal states (done without dryRun, failed, blocked) get a fresh worktree.
-      // Non-terminal states and done+dryRun (→creating_pr) need existing changes preserved.
+      // Terminal states get a fresh worktree, except:
+      // - done+dryRun (→creating_pr): needs existing changes preserved
+      // - manual_handoff resume: state changed to _timedOutState, needs worktree
       const terminalStates = new Set<string>(TERMINAL_STATES);
       const shouldReuseWorktree = opts.resume
         && (!terminalStates.has(ctx.state) || (ctx.state === "done" && ctx.dryRun));
@@ -402,6 +404,7 @@ export function createCli() {
           process.stdout.write(JSON.stringify(output) + "\n");
         } else if (result.state === "manual_handoff") {
           logger.warn("Devloop handed off - needs human intervention", { runId: ctx.runId });
+          keepWorktree = true;
           const output = {
             status: "manual_handoff" as const,
             runId: result.runId,
@@ -440,13 +443,16 @@ export function createCli() {
         process.stdout.write(JSON.stringify(output) + "\n");
         exitCode = 1;
       } finally {
-        if (worktreeCreated) {
+        if (worktreeCreated && !keepWorktree) {
           await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
             logger.error("Worktree cleanup failed", {
               path: worktreePath,
               error: String(err),
             })
           );
+        }
+        if (keepWorktree) {
+          logger.info("Worktree preserved for resume", { path: worktreePath });
         }
       }
       if (exitCode !== 0) {
