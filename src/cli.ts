@@ -18,6 +18,7 @@ import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
 import type { RunContext } from "./types.js";
 import { formatElapsed, formatProgressEvent } from "./agents/shared.js";
+import { formatErrorDetails } from "./util/error.js";
 
 function createFilePersistence(baseDir: string): Persistence {
   return {
@@ -374,7 +375,7 @@ export function createCli() {
           exitCode = 1;
         }
       } catch (err) {
-        logger.error("Devloop crashed", { runId: ctx.runId, error: String(err) });
+        logger.error("Devloop crashed", { runId: ctx.runId, ...formatErrorDetails(err) });
         const output = {
           status: "failed" as const,
           runId: ctx.runId,
@@ -521,7 +522,7 @@ export function createCli() {
           runIssue().catch((err) =>
             logger.error("Run failed", {
               issue: issue.number,
-              error: String(err),
+              ...formatErrorDetails(err),
             })
           );
         }

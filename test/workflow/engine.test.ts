@@ -287,6 +287,87 @@ describe("runWorkflow", () => {
     expect(onComplete).toHaveBeenCalledOnce();
   });
 
+  it("logs state name and stack trace when handler throws Error", async () => {
+    const handlerError = new Error("connection timeout");
+    const handlers: StateHandlerMap = {
+      init: makeHandler("planning"),
+      planning: vi.fn(async () => {
+        throw handlerError;
+      }),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await expect(
+      runWorkflow(ctx, handlers, persistence, { logger })
+    ).rejects.toThrow("connection timeout");
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("planning"),
+      expect.objectContaining({
+        state: "planning",
+        error: "connection timeout",
+        stack: expect.stringContaining("connection timeout"),
+      })
+    );
+  });
+
+  it("logs stderr, exitCode, command for ExecaError-like handler errors", async () => {
+    const execaError = Object.assign(new Error("Command failed"), {
+      stderr: "fatal: bad config",
+      exitCode: 1,
+      command: "git push",
+    });
+    const handlers: StateHandlerMap = {
+      init: vi.fn(async () => {
+        throw execaError;
+      }),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await expect(
+      runWorkflow(ctx, handlers, persistence, { logger })
+    ).rejects.toThrow("Command failed");
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("init"),
+      expect.objectContaining({
+        state: "init",
+        stderr: "fatal: bad config",
+        exitCode: 1,
+        command: "git push",
+      })
+    );
+  });
+
+  it("re-throws handler error after logging", async () => {
+    const originalError = new Error("original");
+    const handlers: StateHandlerMap = {
+      init: vi.fn(async () => {
+        throw originalError;
+      }),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+
+    await expect(runWorkflow(ctx, handlers, persistence)).rejects.toBe(
+      originalError
+    );
+  });
+
   it("emits events via onTransition callback", async () => {
     const handlers: StateHandlerMap = {
       init: makeHandler("planning"),

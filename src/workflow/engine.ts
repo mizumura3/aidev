@@ -1,5 +1,6 @@
 import type { RunContext, RunState, StateHandler } from "../types.js";
 import type { Logger } from "../util/logger.js";
+import { formatErrorDetails } from "../util/error.js";
 
 export type StateHandlerMap = Partial<Record<RunState, StateHandler>>;
 
@@ -36,7 +37,17 @@ export async function runWorkflow(
 
     const from = ctx.state;
     const handlerStart = performance.now();
-    const { nextState, ctx: nextCtx } = await handler(ctx);
+    let nextState: RunState;
+    let nextCtx: RunContext;
+    try {
+      const result = await handler(ctx);
+      nextState = result.nextState;
+      nextCtx = result.ctx;
+    } catch (err) {
+      const details = formatErrorDetails(err);
+      logger?.error(`Handler failed at state: ${from}`, { state: from, ...details });
+      throw err;
+    }
     const elapsedMs = Math.round(performance.now() - handlerStart);
 
     logger?.info(`State ${from} completed`, { state: from, elapsedMs });
