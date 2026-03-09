@@ -91,7 +91,7 @@ describe("run command preflight", () => {
 
   it("runs preflight checks before resuming a saved workflow", async () => {
     tempHome = await mkdtemp(join(tmpdir(), "aidev-home-"));
-    const runDir = join(tempHome, ".devloop", "runs", "run-test");
+    const runDir = join(tempHome, ".aidev", "runs", "run-test");
     await mkdir(runDir, { recursive: true });
     await writeFile(
       join(runDir, "state.json"),

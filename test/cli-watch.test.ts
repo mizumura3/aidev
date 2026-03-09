@@ -938,7 +938,7 @@ describe("run command", () => {
     const { join } = await import("node:path");
 
     const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
-    const runDir = join(tempHome, ".devloop", "runs", "run-resume-test");
+    const runDir = join(tempHome, ".aidev", "runs", "run-resume-test");
     await mkdir(runDir, { recursive: true });
     await writeFile(
       join(runDir, "state.json"),

@@ -147,7 +147,7 @@ export function createCli() {
       const logger = createLogger(verbose ? "debug" : "info");
       const baseDir = join(
         process.env.HOME ?? "~",
-        ".devloop",
+        ".aidev",
         "runs"
       );
       const persistence = createFilePersistence(baseDir);
@@ -413,7 +413,7 @@ export function createCli() {
       const logger = createLogger("info");
       const repo = opts.repo ?? detectRepo(opts.cwd);
       const cwd = opts.cwd;
-      const baseDir = join(process.env.HOME ?? "~", ".devloop", "runs");
+      const baseDir = join(process.env.HOME ?? "~", ".aidev", "runs");
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
@@ -542,7 +542,7 @@ export function createCli() {
     .action(async (runId) => {
       const baseDir = join(
         process.env.HOME ?? "~",
-        ".devloop",
+        ".aidev",
         "runs"
       );
       const persistence = createFilePersistence(baseDir);

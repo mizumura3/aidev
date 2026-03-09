@@ -223,4 +223,4 @@ export AIDEV_SLACK_CHANNEL=C12345678  # チャンネル ID またはユーザー
 
 ## 実行ログ
 
-実行状態は `~/.devloop/runs/<run-id>/` に保存される。`--resume` で途中から再開可能。
+実行状態は `~/.aidev/runs/<run-id>/` に保存される。`--resume` で途中から再開可能。

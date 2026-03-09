@@ -1,6 +1,6 @@
 node_modules/
 dist/
-.devloop/
+.aidev/
 .worktrees/
 .env
 package-lock.json
