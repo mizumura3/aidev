@@ -1,5 +1,5 @@
 import type { AgentRunner, ProgressEvent } from "../agents/runner.js";
-import type { StateHandler, RunContext, RunState, Review, Language } from "../types.js";
+import type { StateHandler, RunContext, RunState, Review, Language, StepName } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
 import type { GitHubAdapter } from "../adapters/github.js";
@@ -113,6 +113,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   const { git, github, logger, runDocumenter, loadRepoConfig } = deps;
   const defaultRunner = deps.runner;
   const runnerByRunId = new Map<string, AgentRunner>();
+  const runnerCache = new Map<string, AgentRunner>();
 
   function transition(
     ctx: RunContext,
@@ -121,11 +122,20 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   ) {
     if (terminalStates.has(nextState)) {
       runnerByRunId.delete(ctx.runId);
+      runnerCache.clear();
     }
     return { nextState, ctx: { ...ctx, ...patch, state: nextState } };
   }
 
-  function getRunner(ctx: RunContext): AgentRunner {
+  function getRunner(ctx: RunContext, step?: StepName): AgentRunner {
+    if (step && ctx.stepBackends?.[step]) {
+      const backendName = ctx.stepBackends[step]!;
+      const cached = runnerCache.get(backendName);
+      if (cached) return cached;
+      const runner = deps.resolveRunner({ backend: backendName });
+      runnerCache.set(backendName, runner);
+      return runner;
+    }
     return runnerByRunId.get(ctx.runId) ?? defaultRunner;
   }
 
@@ -159,6 +169,20 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
     if (merged.language !== undefined) patch.language = merged.language;
 
+    // Merge step-specific backends
+    const stepBackendKeys = ["planning", "implementing", "reviewing", "fixing"] as const;
+    const mergedStepBackends = { ...(ctx.stepBackends ?? {}) };
+    let hasStepBackends = false;
+    for (const step of stepBackendKeys) {
+      if (merged[step]) {
+        mergedStepBackends[step] = merged[step];
+        hasStepBackends = true;
+      }
+    }
+    if (hasStepBackends || ctx.stepBackends) {
+      patch.stepBackends = mergedStepBackends;
+    }
+
     // Re-create runner if backend/model changed via config
     if (merged.backend || merged.model) {
       const resolved = deps.resolveRunner({
@@ -185,6 +209,10 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       backend: merged.backend,
       model: merged.model,
       language: mergedCtx.language,
+      planning: mergedCtx.stepBackends?.planning,
+      implementing: mergedCtx.stepBackends?.implementing,
+      reviewing: mergedCtx.stepBackends?.reviewing,
+      fixing: mergedCtx.stepBackends?.fixing,
     };
     const configBlock = buildResolvedConfigBlock(resolvedConfig);
     const updatedBody = upsertAidevBlock(body, configBlock);
@@ -268,7 +296,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         ? toPlanningTarget(await github.getPr(ctx.prNumber!))
         : await github.getIssue(ctx.issueNumber!);
     const planStart = performance.now();
-    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd, language: ctx.language }, logger, getRunner(ctx), deps.onProgress);
+    const plan = await runPlanner({ issue: workItem, cwd: ctx.cwd, language: ctx.language }, logger, getRunner(ctx, "planning"), deps.onProgress);
     const planElapsed = Math.round(performance.now() - planStart);
     logger.info("Plan created", { summary: plan.summary, agentElapsedMs: planElapsed });
 
@@ -299,7 +327,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         cwd: ctx.cwd,
       },
       logger,
-      getRunner(ctx),
+      getRunner(ctx, "implementing"),
       deps.onProgress
     );
     const implElapsed = Math.round(performance.now() - implStart);
@@ -324,7 +352,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const review = await runReviewer(
       { plan: ctx.plan, diff, cwd: ctx.cwd, language: ctx.language },
       logger,
-      getRunner(ctx),
+      getRunner(ctx, "reviewing"),
       deps.onProgress,
       { reviewRound: currentRound, maxReviewRounds: maxRounds },
     );
@@ -448,7 +476,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const fix = await runFixer(
       fixerInput,
       logger,
-      getRunner(ctx),
+      getRunner(ctx, "fixing"),
       deps.onProgress
     );
     const fixElapsed = Math.round(performance.now() - fixStart);

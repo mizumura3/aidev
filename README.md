@@ -56,6 +56,10 @@ bun run aidev run --pr <number> --repo <owner/name> --cwd <path>
 | `--allow-foreign-issues` | 他ユーザーが作成した Issue の処理を許可 | `false` |
 | `--backend <name>` | 使用するバックエンドランナー | `claude-code` |
 | `--model <model>` | バックエンドで使用するモデル | — |
+| `--planning <backend>` | planning ステップで使用するバックエンド | `--backend` の値 |
+| `--implementing <backend>` | implementing ステップで使用するバックエンド | `--backend` の値 |
+| `--reviewing <backend>` | reviewing ステップで使用するバックエンド | `--backend` の値 |
+| `--fixing <backend>` | fixing ステップで使用するバックエンド | `--backend` の値 |
 
 `--issue` と `--pr` は排他的で、**どちらか一方を必ず指定**する。
 
@@ -93,6 +97,7 @@ maxFixAttempts: 5
 autoMerge: true
 base: release/1.3
 language: ja
+implementing: codex-sdk
 skip:
   - reviewing
   - documenter
@@ -109,6 +114,10 @@ skip:
 | `skip` | string[] | スキップする工程（下記参照） |
 | `backend` | string | 使用するバックエンドランナー |
 | `model` | string | バックエンドで使用するモデル |
+| `planning` | string | planning ステップで使用するバックエンド |
+| `implementing` | string | implementing ステップで使用するバックエンド |
+| `reviewing` | string | reviewing ステップで使用するバックエンド |
+| `fixing` | string | fixing ステップで使用するバックエンド |
 
 `skip` で指定可能な工程:
 
@@ -138,6 +147,17 @@ export AIDEV_MODEL=claude-sonnet-4-6
 | `codex-sdk` | OpenAI Codex SDK (`@openai/codex-sdk`) を使用 | 対応 |
 
 `codex-sdk` バックエンドは `OPENAI_API_KEY` 環境変数（または `apiKey` 設定）が必要。`codex-cli` バックエンドはローカルにインストールされた `codex` CLI を使用する。
+
+#### ステップ別バックエンド
+
+ワークフローの各ステップ（planning, implementing, reviewing, fixing）ごとに異なるバックエンドを指定できる。未指定のステップは `--backend` の値にフォールバックする。同じバックエンドが複数ステップで使われる場合はランナーインスタンスが共有される。
+
+```bash
+bun run aidev run --issue 42 --repo owner/name \
+  --backend claude-code \
+  --implementing codex-sdk \
+  --reviewing claude-code
+```
 
 ### `watch` — ラベル付き Issue を監視して自動処理
 

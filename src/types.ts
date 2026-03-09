@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+export const StepNameSchema = z.enum(["planning", "implementing", "reviewing", "fixing"]);
+export type StepName = z.infer<typeof StepNameSchema>;
+
+export const StepBackendsSchema = z.object({
+  planning: z.string().optional(),
+  implementing: z.string().optional(),
+  reviewing: z.string().optional(),
+  fixing: z.string().optional(),
+});
+export type StepBackends = z.infer<typeof StepBackendsSchema>;
+
 export const SkippableStateSchema = z.enum([
   "reviewing",
   "watching_ci",
@@ -89,6 +100,7 @@ export const RunContextSchema = z.object({
   review: ReviewSchema.optional(),
   fix: FixSchema.optional(),
   fixTrigger: z.enum(["ci", "review"]).optional(),
+  stepBackends: StepBackendsSchema.optional(),
 }).superRefine((ctx, issueCtx) => {
   if (ctx.targetKind === "issue" && ctx.issueNumber == null) {
     issueCtx.addIssue({
