@@ -202,6 +202,17 @@ export function createCli() {
             logger.warn("Resuming from manual_handoff with no _timedOutState, restarting from init");
             ctx.state = "init";
           }
+          // Clear handoff metadata to avoid stale data in the resumed run
+          delete ctx._timedOutState;
+          delete ctx.handoffReason;
+          // Clear stateTimeouts to prevent re-triggering the same timeout.
+          // User can re-specify via issue body if desired.
+          if (ctx.stateTimeouts) {
+            logger.info("Clearing stateTimeouts for resume to prevent repeated handoff", {
+              previousTimeouts: ctx.stateTimeouts,
+            });
+            delete ctx.stateTimeouts;
+          }
         }
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
