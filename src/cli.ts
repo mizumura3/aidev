@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -306,13 +307,31 @@ export function createCli() {
 
       let exitCode = 0;
       let worktreeCreated = false;
+
+      // Determine whether to reuse existing worktree on resume.
+      // Terminal states (done without dryRun, failed, blocked) get a fresh worktree.
+      // Non-terminal states and done+dryRun (→creating_pr) need existing changes preserved.
+      const terminalStates = new Set(["done", "failed", "blocked"]);
+      const shouldReuseWorktree = opts.resume
+        && (!terminalStates.has(ctx.state) || (ctx.state === "done" && ctx.dryRun));
+
       try {
-        // Remove stale worktree from a previous interrupted run, if any
-        await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
-        await git.addWorktree(worktreePath, ctx.base, originalCwd);
-        worktreeCreated = true;
-        ctx.cwd = worktreePath;
-        logger.info("Created worktree", { path: worktreePath, base: ctx.base });
+        if (shouldReuseWorktree) {
+          if (!existsSync(worktreePath)) {
+            logger.error("Worktree not found for resume. The previous worktree may have been cleaned up.", { path: worktreePath });
+            process.exit(1);
+          }
+          ctx.cwd = worktreePath;
+          worktreeCreated = true;
+          logger.info("Reusing existing worktree for resume", { path: worktreePath });
+        } else {
+          // Remove stale worktree from a previous interrupted run, if any
+          await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
+          await git.addWorktree(worktreePath, ctx.base, originalCwd);
+          worktreeCreated = true;
+          ctx.cwd = worktreePath;
+          logger.info("Created worktree", { path: worktreePath, base: ctx.base });
+        }
 
         const result = await runWorkflow(ctx, handlers, persistence, {
           logger,

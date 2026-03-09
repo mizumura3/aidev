@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock modules before any imports
-const { mockAddWorktree, mockRemoveWorktree, mockRunPreflightChecks } = vi.hoisted(() => ({
+const { mockAddWorktree, mockRemoveWorktree, mockRunPreflightChecks, mockExistsSync } = vi.hoisted(() => ({
   mockAddWorktree: vi.fn(async () => {}),
   mockRemoveWorktree: vi.fn(async () => {}),
   mockRunPreflightChecks: vi.fn(async () => {}),
+  mockExistsSync: vi.fn(() => false),
 }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, existsSync: mockExistsSync };
+});
 
 vi.mock("../src/adapters/git.js", () => ({
   createGitAdapter: vi.fn(() => ({
@@ -930,9 +936,7 @@ describe("run command", () => {
     expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
   });
 
-  it("creates worktree from opts.cwd even when resuming (saved cwd may be stale)", async () => {
-    // When resuming, ctx.cwd from saved state points to a now-deleted worktree path.
-    // The worktree should be created from opts.cwd (the original repo), not ctx.cwd.
+  it("reuses existing worktree when resuming non-terminal state", async () => {
     const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -948,7 +952,140 @@ describe("run command", () => {
         issueNumber: 42,
         repo: "owner/repo",
         cwd: "/tmp/stale-worktree/.worktrees/issue-42",
-        state: "planning",
+        state: "implementing",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: false,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    // Worktree exists on disk
+    mockExistsSync.mockReturnValue(true);
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // Should NOT add worktree — reuse existing
+      expect(mockAddWorktree).not.toHaveBeenCalled();
+
+      // removeWorktree should only be called once in finally (cleanup), not before
+      expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+
+      // ctx.cwd should be the worktree path derived from opts.cwd
+      const ctx = mockRunWorkflow.mock.calls[0][0];
+      expect(ctx.cwd).toContain("/tmp/real-repo/.worktrees/issue-42");
+    } finally {
+      mockExistsSync.mockReturnValue(false);
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("errors when resuming non-terminal state but worktree does not exist", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".aidev", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "implementing",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: false,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    // Worktree does NOT exist on disk
+    mockExistsSync.mockReturnValue(false);
+
+    try {
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // Should exit with error
+      expect(process.exit).toHaveBeenCalledWith(1);
+    } finally {
+      mockExistsSync.mockReturnValue(false);
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("recreates worktree when resuming from terminal state (failed)", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".aidev", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "failed",
         branch: "aidev/issue-42",
         base: "main",
         maxFixAttempts: 3,
@@ -986,13 +1123,86 @@ describe("run command", () => {
         "--yes",
       ]);
 
-      // Worktree should be created from /tmp/real-repo, NOT from the stale saved cwd
+      // Terminal state → should recreate worktree (remove + add)
+      expect(mockRemoveWorktree).toHaveBeenCalled();
       expect(mockAddWorktree).toHaveBeenCalledWith(
         expect.stringContaining("/tmp/real-repo/.worktrees/issue-42"),
         "main",
         "/tmp/real-repo",
       );
     } finally {
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("reuses worktree when resuming done+dryRun (transitions to creating_pr)", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".aidev", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "done",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: true,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    // Worktree exists
+    mockExistsSync.mockReturnValue(true);
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // done + dryRun → creating_pr, needs existing changes → reuse worktree
+      expect(mockAddWorktree).not.toHaveBeenCalled();
+
+      // removeWorktree should only be called once in finally (cleanup), not before
+      expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+
+      const ctx = mockRunWorkflow.mock.calls[0][0];
+      expect(ctx.state).toBe("creating_pr");
+    } finally {
+      mockExistsSync.mockReturnValue(false);
       process.env.HOME = originalHome;
       await rm(tempHome, { recursive: true, force: true });
     }
