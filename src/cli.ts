@@ -13,6 +13,7 @@ import { runDocumenter } from "./agents/documenter.js";
 import { createRunner } from "./agents/runner-factory.js";
 import { DEFAULT_BACKEND } from "./agents/backend-config.js";
 import type { BackendConfig } from "./agents/backend-config.js";
+import type { StepBackends } from "./types.js";
 import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
@@ -103,8 +104,6 @@ function createFilePersistence(baseDir: string): Persistence {
     },
   };
 }
-
-import type { StepBackends } from "./types.js";
 
 function buildStepBackends(opts: Record<string, unknown>): StepBackends | undefined {
   const steps: StepBackends = {};
