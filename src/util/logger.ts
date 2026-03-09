@@ -1,3 +1,5 @@
+import { appendFileSync } from "node:fs";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogEntry {
@@ -20,7 +22,14 @@ export interface Logger {
   error(msg: string, extra?: Record<string, unknown>): void;
 }
 
-export function createLogger(minLevel: LogLevel = "info"): Logger {
+export interface CreateLoggerOptions {
+  minLevel?: LogLevel;
+  logFilePath?: string;
+}
+
+export function createLogger(opts: LogLevel | CreateLoggerOptions = "info"): Logger {
+  const { minLevel = "info", logFilePath } = typeof opts === "string" ? { minLevel: opts } : opts;
+
   function log(level: LogLevel, msg: string, extra?: Record<string, unknown>) {
     if (levelOrder[level] < levelOrder[minLevel]) return;
     const entry: LogEntry = {
@@ -31,6 +40,9 @@ export function createLogger(minLevel: LogLevel = "info"): Logger {
     };
     const output = JSON.stringify(entry);
     process.stderr.write(output + "\n");
+    if (logFilePath) {
+      appendFileSync(logFilePath, output + "\n");
+    }
   }
 
   return {

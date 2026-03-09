@@ -141,7 +141,7 @@ export function createCli() {
   runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const verbose = opts.verbose as boolean;
-      const logger = createLogger(verbose ? "debug" : "info");
+      let logger = createLogger(verbose ? "debug" : "info");
       const baseDir = join(
         process.env.HOME ?? "~",
         ".aidev",
@@ -275,6 +275,14 @@ export function createCli() {
           _cliExplicit: cliExplicit.size > 0 ? cliExplicit : undefined,
         };
       }
+
+      // Recreate logger with file output now that runId is known
+      const logDir = join(baseDir, ctx.runId);
+      await mkdir(logDir, { recursive: true });
+      logger = createLogger({
+        minLevel: verbose ? "debug" : "info",
+        logFilePath: join(logDir, "run.log"),
+      });
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(ctx.repo);
@@ -486,6 +494,13 @@ export function createCli() {
           const worktreePath = join(cwd, ".worktrees", `issue-${issue.number}`);
 
           const runIssue = async () => {
+            const runLogDir = join(baseDir, runId);
+            await mkdir(runLogDir, { recursive: true });
+            const runLogger = createLogger({
+              minLevel: "info",
+              logFilePath: join(runLogDir, "run.log"),
+            });
+
             await git.addWorktree(worktreePath, opts.base, cwd);
             try {
               const ctx: RunContext = {
@@ -511,9 +526,9 @@ export function createCli() {
 
               const issueStart = performance.now();
               await runWorkflow(ctx, handlers, persistence, {
-                logger,
+                logger: runLogger,
                 onTransition: (from, to) =>
-                  logger.info("State transition", { from, to }),
+                  runLogger.info("State transition", { from, to }),
                 onComplete: async (finalCtx) => {
                   const elapsedMs = Math.round(performance.now() - issueStart);
                   const message = formatSlackMessage({
@@ -530,7 +545,7 @@ export function createCli() {
               });
             } finally {
               await git.removeWorktree(worktreePath, cwd).catch((err) =>
-                logger.error("Worktree cleanup failed", {
+                runLogger.error("Worktree cleanup failed", {
                   path: worktreePath,
                   error: String(err),
                 })
