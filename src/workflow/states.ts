@@ -1,4 +1,5 @@
 import type { AgentRunner, ProgressEvent } from "../agents/runner.js";
+import { TERMINAL_STATES } from "../types.js";
 import type { StateHandler, RunContext, RunState, Review, Language } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
@@ -43,7 +44,7 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
   };
 }
 
-const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
+const terminalStates: ReadonlySet<RunState> = new Set(TERMINAL_STATES);
 
 function formatReviewComment(review: Review, round: number, maxRounds: number, language: Language): string {
   const safeMaxRounds = maxRounds ?? 1;
@@ -158,6 +159,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (merged.base !== undefined) patch.base = merged.base;
     if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
     if (merged.language !== undefined) patch.language = merged.language;
+    if (merged.stateTimeouts !== undefined) patch.stateTimeouts = merged.stateTimeouts;
 
     // Re-create runner if backend/model changed via config
     if (merged.backend || merged.model) {

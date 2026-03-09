@@ -17,7 +17,7 @@ import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
-import { RunStateSchema, type RunContext, type TerminalState } from "./types.js";
+import { RunStateSchema, TERMINAL_STATES, type RunContext, type TerminalState } from "./types.js";
 import { formatElapsed, formatProgressEvent } from "./agents/shared.js";
 import { formatErrorDetails } from "./util/error.js";
 
@@ -331,7 +331,7 @@ export function createCli() {
       // Determine whether to reuse existing worktree on resume.
       // Terminal states (done without dryRun, failed, blocked) get a fresh worktree.
       // Non-terminal states and done+dryRun (→creating_pr) need existing changes preserved.
-      const terminalStates = new Set(["done", "failed", "blocked"]);
+      const terminalStates = new Set<string>(TERMINAL_STATES);
       const shouldReuseWorktree = opts.resume
         && (!terminalStates.has(ctx.state) || (ctx.state === "done" && ctx.dryRun));
 

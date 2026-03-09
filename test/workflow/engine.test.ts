@@ -481,6 +481,18 @@ describe("withTimeout", () => {
     expect(result.ctx.fixAttempts).toBe(2);
   });
 
+  it("propagates handler rejection instead of swallowing it", async () => {
+    const error = new Error("handler crashed");
+    const inner: StateHandler = async () => {
+      throw error;
+    };
+
+    const wrapped = withTimeout(inner, 5000);
+    const ctx = makeCtx({ state: "implementing" });
+
+    await expect(wrapped(ctx)).rejects.toBe(error);
+  });
+
   it("clears timer when handler completes before timeout", async () => {
     const clearSpy = vi.spyOn(globalThis, "clearTimeout");
 

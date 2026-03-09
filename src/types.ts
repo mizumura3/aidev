@@ -27,7 +27,8 @@ export const RunStateSchema = z.enum([
 ]);
 export type RunState = z.infer<typeof RunStateSchema>;
 
-export type TerminalState = "done" | "failed" | "blocked" | "manual_handoff";
+export const TERMINAL_STATES = ["done", "failed", "blocked", "manual_handoff"] as const;
+export type TerminalState = (typeof TERMINAL_STATES)[number];
 
 export const PlanSchema = z.object({
   summary: z.string(),

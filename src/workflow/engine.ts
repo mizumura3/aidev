@@ -1,3 +1,4 @@
+import { TERMINAL_STATES } from "../types.js";
 import type { RunContext, RunState, StateHandler } from "../types.js";
 import type { Logger } from "../util/logger.js";
 import { formatErrorDetails } from "../util/error.js";
@@ -17,7 +18,7 @@ export interface WorkflowOptions {
   logger?: Logger;
 }
 
-const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked", "manual_handoff"]);
+const terminalStates: ReadonlySet<RunState> = new Set(TERMINAL_STATES);
 
 /**
  * Wrap a StateHandler with a wall-clock timeout.
@@ -33,7 +34,7 @@ export function withTimeout(
   if (!Number.isFinite(timeoutMs)) return handler;
 
   return (ctx) => {
-    return new Promise<{ nextState: RunState; ctx: RunContext }>((resolve) => {
+    return new Promise<{ nextState: RunState; ctx: RunContext }>((resolve, reject) => {
       const timer = setTimeout(() => {
         logger?.warn(`State ${ctx.state} timed out after ${timeoutMs}ms — handing off`, {
           state: ctx.state,
@@ -49,10 +50,16 @@ export function withTimeout(
         });
       }, timeoutMs);
 
-      handler(ctx).then((result) => {
-        clearTimeout(timer);
-        resolve(result);
-      });
+      handler(ctx).then(
+        (result) => {
+          clearTimeout(timer);
+          resolve(result);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
     });
   };
 }
