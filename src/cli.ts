@@ -410,6 +410,7 @@ export function createCli() {
             runId: result.runId,
             timedOutState: result._timedOutState,
             reason: result.handoffReason,
+            worktreePath,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
           exitCode = 1;
