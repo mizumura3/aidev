@@ -17,7 +17,7 @@ import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
-import { RunStateSchema, type RunContext } from "./types.js";
+import { RunStateSchema, type RunContext, type TerminalState } from "./types.js";
 import { formatElapsed, formatProgressEvent } from "./agents/shared.js";
 import { formatErrorDetails } from "./util/error.js";
 
@@ -188,7 +188,15 @@ export function createCli() {
         }
         // If previous run was handed off due to timeout, resume from the timed-out state
         if (saved.state === "manual_handoff" && saved._timedOutState) {
-          ctx.state = RunStateSchema.parse(saved._timedOutState);
+          const parsed = RunStateSchema.safeParse(saved._timedOutState);
+          if (parsed.success) {
+            ctx.state = parsed.data;
+          } else {
+            logger.error("Invalid _timedOutState in saved run, falling back to init", {
+              _timedOutState: saved._timedOutState,
+            });
+            ctx.state = "init";
+          }
         }
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -369,7 +377,7 @@ export function createCli() {
               targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
               issueTitle: finalCtx.issueTitle,
               repo: finalCtx.repo,
-              finalState: finalCtx.state as "done" | "failed" | "blocked" | "manual_handoff",
+              finalState: finalCtx.state as TerminalState,
               elapsedMs,
               prNumber: finalCtx.prNumber,
             });
@@ -558,7 +566,7 @@ export function createCli() {
                     targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
                     issueTitle: finalCtx.issueTitle,
                     repo: finalCtx.repo,
-                    finalState: finalCtx.state as "done" | "failed" | "blocked" | "manual_handoff",
+                    finalState: finalCtx.state as TerminalState,
                     elapsedMs,
                     prNumber: finalCtx.prNumber,
                   });

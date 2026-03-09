@@ -1,9 +1,11 @@
+import type { TerminalState } from "../types.js";
+
 export interface SlackMessageInput {
   targetKind: "issue" | "pr";
   targetNumber: number;
   issueTitle?: string;
   repo: string;
-  finalState: "done" | "failed" | "blocked" | "manual_handoff";
+  finalState: TerminalState;
   elapsedMs: number;
   prNumber?: number;
 }

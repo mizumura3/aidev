@@ -480,4 +480,57 @@ describe("withTimeout", () => {
 
     expect(result.ctx.fixAttempts).toBe(2);
   });
+
+  it("clears timer when handler completes before timeout", async () => {
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "reviewing" as RunState,
+      ctx,
+    });
+
+    const wrapped = withTimeout(inner, 60000);
+    const ctx = makeCtx({ state: "implementing" });
+    await wrapped(ctx);
+
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+});
+
+describe("runWorkflow with stateTimeouts", () => {
+  it("applies timeout to handler when stateTimeouts is configured", async () => {
+    // Handler that takes 200ms but has a 50ms timeout
+    const slowHandler: StateHandler = async (ctx) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+    const handlers: StateHandlerMap = {
+      implementing: slowHandler,
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({
+      state: "implementing",
+      stateTimeouts: { implementing: 50 },
+    });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+
+    expect(result.state).toBe("manual_handoff");
+    expect(result._timedOutState).toBe("implementing");
+  });
+
+  it("does not apply timeout when stateTimeouts is not set for the state", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({
+      stateTimeouts: { implementing: 50 },
+    });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+
+    expect(result.state).toBe("done");
+  });
 });

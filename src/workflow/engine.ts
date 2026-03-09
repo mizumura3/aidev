@@ -32,9 +32,9 @@ export function withTimeout(
 ): StateHandler {
   if (!Number.isFinite(timeoutMs)) return handler;
 
-  return async (ctx) => {
-    const timeout = new Promise<{ nextState: RunState; ctx: RunContext }>((resolve) => {
-      setTimeout(() => {
+  return (ctx) => {
+    return new Promise<{ nextState: RunState; ctx: RunContext }>((resolve) => {
+      const timer = setTimeout(() => {
         logger?.warn(`State ${ctx.state} timed out after ${timeoutMs}ms — handing off`, {
           state: ctx.state,
           timeoutMs,
@@ -48,9 +48,12 @@ export function withTimeout(
           },
         });
       }, timeoutMs);
-    });
 
-    return Promise.race([handler(ctx), timeout]);
+      handler(ctx).then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      });
+    });
   };
 }
 
@@ -65,9 +68,15 @@ export async function runWorkflow(
   const workflowStart = performance.now();
 
   while (!terminalStates.has(ctx.state)) {
-    const handler = handlers[ctx.state];
+    let handler = handlers[ctx.state];
     if (!handler) {
       throw new Error(`No handler for state: ${ctx.state}`);
+    }
+
+    // Apply per-state timeout if configured
+    const timeoutMs = ctx.stateTimeouts?.[ctx.state];
+    if (timeoutMs != null) {
+      handler = withTimeout(handler, timeoutMs, logger);
     }
 
     const from = ctx.state;

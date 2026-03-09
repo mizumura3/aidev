@@ -61,7 +61,7 @@ function parseYamlLike(block: string): Record<string, string | string[] | Record
   function flushCurrent() {
     if (currentKey) {
       if (currentList && currentList.length > 0) result[currentKey] = currentList;
-      if (currentMap && Object.keys(currentMap).length > 0) result[currentKey] = currentMap;
+      else if (currentMap && Object.keys(currentMap).length > 0) result[currentKey] = currentMap;
     }
     currentKey = null;
     currentList = null;

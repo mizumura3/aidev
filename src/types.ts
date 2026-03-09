@@ -27,6 +27,8 @@ export const RunStateSchema = z.enum([
 ]);
 export type RunState = z.infer<typeof RunStateSchema>;
 
+export type TerminalState = "done" | "failed" | "blocked" | "manual_handoff";
+
 export const PlanSchema = z.object({
   summary: z.string(),
   steps: z.array(z.string()).min(1),
