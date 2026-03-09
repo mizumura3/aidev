@@ -12,17 +12,23 @@ import type { Logger } from "../../src/util/logger.js";
 function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
   return {
     runId: "test-run",
+    targetKind: "issue",
     issueNumber: 1,
     repo: "owner/repo",
     cwd: "/tmp/repo",
     state: "init",
     branch: "aidev/issue-1",
+    base: "main",
     maxFixAttempts: 3,
     fixAttempts: 0,
+    maxReviewRounds: 1,
+    reviewRound: 0,
     dryRun: false,
     autoMerge: false,
+    language: "ja",
     issueLabels: [],
     skipStates: [],
+    skipAuthorCheck: false,
     ...overrides,
   };
 }
@@ -191,6 +197,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await runWorkflow(ctx, handlers, persistence, { logger });
@@ -217,6 +225,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await runWorkflow(ctx, handlers, persistence, { logger });
@@ -304,6 +314,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await expect(
@@ -338,6 +350,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await expect(
@@ -718,5 +732,49 @@ describe("E2E: timeout → manual_handoff → resume → done", () => {
     expect(loaded!._timedOutState).toBe("reviewing");
     expect(loaded!.handoffReason).toContain("reviewing");
     expect(loaded!.handoffReason).toContain("timed out");
+  });
+});
+
+describe("runWorkflow persistence error handling", () => {
+  it("re-throws when persistence.save fails", async () => {
+    const saveError = new Error("disk full");
+    const handlers: StateHandlerMap = { init: makeHandler("done") };
+    const persistence: Persistence = {
+      save: vi.fn(async () => { throw saveError; }),
+      load: vi.fn(async () => null),
+    };
+    const ctx = makeCtx();
+
+    await expect(runWorkflow(ctx, handlers, persistence)).rejects.toBe(saveError);
+  });
+
+  it("logs error context when persistence.save fails", async () => {
+    const saveError = new Error("disk full");
+    const handlers: StateHandlerMap = { init: makeHandler("done") };
+    const persistence: Persistence = {
+      save: vi.fn(async () => { throw saveError; }),
+      load: vi.fn(async () => null),
+    };
+    const ctx = makeCtx();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
+    };
+
+    await expect(
+      runWorkflow(ctx, handlers, persistence, { logger })
+    ).rejects.toBe(saveError);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("persist"),
+      expect.objectContaining({
+        state: "done",
+        runId: "test-run",
+      })
+    );
   });
 });

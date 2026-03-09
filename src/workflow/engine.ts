@@ -45,6 +45,10 @@ export const MAX_STATE_TIMEOUT_MS = 60 * 60 * 1000;
  * and cancellable APIs (e.g. `fetch(url, { signal })`) where possible.
  *
  * Pass `Infinity` or a non-positive value to effectively disable the timeout.
+ *
+ * **NOTE**: This function does NOT enforce `MIN_STATE_TIMEOUT_MS`. The engine's
+ * `runWorkflow` applies min/max guards before calling this. Direct callers
+ * (e.g. tests) bypass those guards and must enforce their own minimum.
  */
 export function withTimeout(
   handler: StateHandler,
