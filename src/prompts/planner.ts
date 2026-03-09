@@ -1,9 +1,10 @@
 import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
 import type { Issue } from "../adapters/github.js";
+import type { Language } from "../types.js";
 
 export interface BuildPlannerPromptInput {
   issue: Pick<Issue, "number" | "title" | "body">;
-  language: "ja" | "en";
+  language: Language;
 }
 
 export function buildPlannerPrompt(input: BuildPlannerPromptInput): string {

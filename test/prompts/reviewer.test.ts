@@ -29,16 +29,15 @@ describe("buildReviewerPrompt", () => {
     expect(prompt).toContain('<untrusted-content source="diff">');
   });
 
-  it("includes review round info when provided", () => {
+  it("includes review round info when roundInfo is provided", () => {
     const prompt = buildReviewerPrompt({
       ...defaultInput,
-      reviewRound: 2,
-      maxReviewRounds: 3,
+      roundInfo: { round: 2, max: 3 },
     });
     expect(prompt).toContain("Round 2 of 3");
   });
 
-  it("omits review round info when not provided", () => {
+  it("omits review round info when roundInfo is not provided", () => {
     const prompt = buildReviewerPrompt(defaultInput);
     expect(prompt).not.toContain("Round");
   });

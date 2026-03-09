@@ -42,4 +42,24 @@ describe("buildFixerPrompt", () => {
     expect(prompt).toContain('"fixPlan"');
     expect(prompt).toContain('"filesToTouch"');
   });
+
+  it("CI mode does not contain review-related text", () => {
+    const prompt = buildFixerPrompt({ plan, ciLog: "npm test failed" });
+    expect(prompt).not.toContain("review");
+    expect(prompt).not.toContain('<untrusted-content source="review-feedback">');
+  });
+
+  it("review mode does not contain CI-related text", () => {
+    const prompt = buildFixerPrompt({ plan, reviewFeedback: "Fix naming" });
+    expect(prompt).not.toContain("CI");
+    expect(prompt).not.toContain('<untrusted-content source="ci-log">');
+  });
+
+  it("reviewFeedback takes precedence when both are provided", () => {
+    const prompt = buildFixerPrompt({ plan, ciLog: "ci error", reviewFeedback: "review note" });
+    expect(prompt).toContain("review");
+    expect(prompt).toContain("review note");
+    expect(prompt).not.toContain("CI");
+    expect(prompt).not.toContain('<untrusted-content source="ci-log">');
+  });
 });

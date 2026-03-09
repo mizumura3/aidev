@@ -28,8 +28,9 @@ export async function runReviewer(
     plan: input.plan,
     diff: input.diff,
     language: input.language,
-    reviewRound: roundInfo?.reviewRound,
-    maxReviewRounds: roundInfo?.maxReviewRounds,
+    roundInfo: roundInfo
+      ? { round: roundInfo.reviewRound, max: roundInfo.maxReviewRounds }
+      : undefined,
   });
 
   logger.info("Running reviewer agent", roundInfo ? { round: roundInfo.reviewRound } : {});
