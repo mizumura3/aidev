@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs";
+import { createWriteStream, type WriteStream } from "node:fs";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -20,6 +20,8 @@ export interface Logger {
   info(msg: string, extra?: Record<string, unknown>): void;
   warn(msg: string, extra?: Record<string, unknown>): void;
   error(msg: string, extra?: Record<string, unknown>): void;
+  setLogFile(path: string): void;
+  flush(): Promise<void>;
 }
 
 export interface CreateLoggerOptions {
@@ -27,8 +29,31 @@ export interface CreateLoggerOptions {
   logFilePath?: string;
 }
 
-export function createLogger(opts: LogLevel | CreateLoggerOptions = "info"): Logger {
-  const { minLevel = "info", logFilePath } = typeof opts === "string" ? { minLevel: opts } : opts;
+export function createLogger(opts: CreateLoggerOptions = {}): Logger {
+  const { minLevel = "info", logFilePath } = opts;
+
+  let stream: WriteStream | null = null;
+  let fileErrorWarned = false;
+
+  function openStream(path: string): void {
+    if (stream) {
+      stream.end();
+    }
+    fileErrorWarned = false;
+    stream = createWriteStream(path, { flags: "a" });
+    stream.on("error", (err) => {
+      if (!fileErrorWarned) {
+        fileErrorWarned = true;
+        process.stderr.write(
+          JSON.stringify({ level: "warn", msg: "Log file write failed", error: String(err), ts: new Date().toISOString() }) + "\n"
+        );
+      }
+    });
+  }
+
+  if (logFilePath) {
+    openStream(logFilePath);
+  }
 
   function log(level: LogLevel, msg: string, extra?: Record<string, unknown>) {
     if (levelOrder[level] < levelOrder[minLevel]) return;
@@ -40,12 +65,8 @@ export function createLogger(opts: LogLevel | CreateLoggerOptions = "info"): Log
     };
     const output = JSON.stringify(entry);
     process.stderr.write(output + "\n");
-    if (logFilePath) {
-      try {
-        appendFileSync(logFilePath, output + "\n");
-      } catch {
-        // Logging should never crash the application
-      }
+    if (stream) {
+      stream.write(output + "\n");
     }
   }
 
@@ -54,5 +75,20 @@ export function createLogger(opts: LogLevel | CreateLoggerOptions = "info"): Log
     info: (msg, extra) => log("info", msg, extra),
     warn: (msg, extra) => log("warn", msg, extra),
     error: (msg, extra) => log("error", msg, extra),
+    setLogFile(path: string) {
+      openStream(path);
+    },
+    flush(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        if (stream && !stream.destroyed) {
+          stream.write("", (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        } else {
+          resolve();
+        }
+      });
+    },
   };
 }

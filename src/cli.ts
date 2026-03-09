@@ -25,7 +25,7 @@ function createFilePersistence(baseDir: string): Persistence {
   return {
     async save(ctx) {
       const dir = join(baseDir, ctx.runId);
-      await mkdir(dir, { recursive: true });
+      // Directory is created by cli commands before workflow starts
       await writeFile(join(dir, "state.json"), JSON.stringify(ctx, null, 2));
 
       if (ctx.plan)
@@ -141,7 +141,7 @@ export function createCli() {
   runCmd.action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
       const verbose = opts.verbose as boolean;
-      let logger = createLogger(verbose ? "debug" : "info");
+      const logger = createLogger({ minLevel: verbose ? "debug" : "info" });
       const baseDir = join(
         process.env.HOME ?? "~",
         ".aidev",
@@ -276,13 +276,10 @@ export function createCli() {
         };
       }
 
-      // Recreate logger with file output now that runId is known
+      // Enable file logging now that runId is known
       const logDir = join(baseDir, ctx.runId);
       await mkdir(logDir, { recursive: true });
-      logger = createLogger({
-        minLevel: verbose ? "debug" : "info",
-        logFilePath: join(logDir, "run.log"),
-      });
+      logger.setLogFile(join(logDir, "run.log"));
 
       if (opts.resume) {
         logger.info("Resuming run", { runId: ctx.runId, fromState: ctx.state, targetKind, targetNumber });
@@ -442,7 +439,12 @@ export function createCli() {
     .option("--language <lang>", "Output language (ja or en)", "ja")
     .action(async (opts) => {
       if (opts.claudePath) process.env.CLAUDE_EXECUTABLE = opts.claudePath;
-      const logger = createLogger("info");
+      const baseDir = join(process.env.HOME ?? "~", ".aidev", "runs");
+      await mkdir(baseDir, { recursive: true });
+      const logger = createLogger({
+        minLevel: "info",
+        logFilePath: join(baseDir, "watch.log"),
+      });
 
       if (!opts.repo) {
         logger.error("--repo is required (e.g. --repo owner/name)");
@@ -451,7 +453,6 @@ export function createCli() {
 
       const repo = opts.repo;
       const cwd = opts.cwd;
-      const baseDir = join(process.env.HOME ?? "~", ".aidev", "runs");
 
       const git = createGitAdapter();
       const github = createGitHubAdapter(repo);
