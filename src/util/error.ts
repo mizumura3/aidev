@@ -24,7 +24,7 @@ export function formatErrorDetails(err: unknown): ErrorDetails {
   };
 
   // Duck-type ExecaError: check for stderr, exitCode, command properties
-  const execaLike = err as Record<string, unknown>;
+  const execaLike = err as unknown as Record<string, unknown>;
 
   if (typeof execaLike.stderr === "string") {
     details.stderr =
