@@ -18,13 +18,9 @@ export async function runPlanner(
   runner: AgentRunner,
   onMessage?: (message: ProgressEvent) => void
 ): Promise<Plan> {
-  const languageInstruction = input.language === "ja"
-    ? "Write all output text in Japanese."
-    : "Write all output text in English.";
-
   const prompt = buildPlannerPrompt({
     issue: input.issue,
-    languageInstruction,
+    language: input.language,
   });
 
   logger.info("Running planner agent", { issue: input.issue.number });

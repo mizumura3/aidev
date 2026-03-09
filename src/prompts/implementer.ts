@@ -1,15 +1,22 @@
-import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "../agents/shared.js";
+import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
 import type { Plan } from "../types.js";
 
 export interface BuildImplementerPromptInput {
   plan: Plan;
-  label: string;
+  workItemKind: "issue" | "pr";
   workItemNumber: number;
-  relatedLine: string;
 }
 
 export function buildImplementerPrompt(input: BuildImplementerPromptInput): string {
-  return `You are an implementation agent. Implement the following plan for ${input.label} #${input.workItemNumber}.
+  const label = input.workItemKind === "pr" ? "PR" : "issue";
+  const relatedLine =
+    input.workItemKind === "issue"
+      ? `## 関連 Issue
+closes #${input.workItemNumber}`
+      : `## 関連PR
+improves #${input.workItemNumber}`;
+
+  return `You are an implementation agent. Implement the following plan for ${label} #${input.workItemNumber}.
 
 ${INJECTION_DEFENSE_PROMPT}
 
@@ -40,7 +47,7 @@ The prBodyDraft MUST follow this format:
 - [ ] 既存テストがパスすることを確認
 - [ ] 必要に応じて新規テストを追加
 
-${input.relatedLine}
+${relatedLine}
 
 Output ONLY valid JSON, no markdown fences.`;
 }

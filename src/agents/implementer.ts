@@ -18,19 +18,10 @@ export async function runImplementer(
   runner: AgentRunner,
   onMessage?: (message: ProgressEvent) => void
 ): Promise<Result> {
-  const label = input.workItemKind === "pr" ? "PR" : "issue";
-  const relatedLine =
-    input.workItemKind === "issue"
-      ? `## 関連 Issue
-closes #${input.workItemNumber}`
-      : `## 関連PR
-improves #${input.workItemNumber}`;
-
   const prompt = buildImplementerPrompt({
     plan: input.plan,
-    label,
+    workItemKind: input.workItemKind,
     workItemNumber: input.workItemNumber,
-    relatedLine,
   });
 
   logger.info("Running implementer agent", {

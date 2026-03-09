@@ -24,18 +24,12 @@ export async function runReviewer(
   onMessage?: (message: ProgressEvent) => void,
   roundInfo?: ReviewRoundInfo,
 ): Promise<Review> {
-  const roundLine = roundInfo
-    ? `\n\nThis is review Round ${roundInfo.reviewRound} of ${roundInfo.maxReviewRounds}.`
-    : "";
-  const languageInstruction = input.language === "ja"
-    ? "Write all output text in Japanese."
-    : "Write all output text in English.";
-
   const prompt = buildReviewerPrompt({
     plan: input.plan,
     diff: input.diff,
-    languageInstruction,
-    roundLine,
+    language: input.language,
+    reviewRound: roundInfo?.reviewRound,
+    maxReviewRounds: roundInfo?.maxReviewRounds,
   });
 
   logger.info("Running reviewer agent", roundInfo ? { round: roundInfo.reviewRound } : {});

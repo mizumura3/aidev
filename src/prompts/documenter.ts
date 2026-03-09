@@ -1,17 +1,19 @@
-import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "../agents/shared.js";
+import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
 
 export interface BuildDocumenterPromptInput {
   changeSummary: string;
-  changedFilesSection: string;
+  changedFiles: string[];
 }
 
 export function buildDocumenterPrompt(input: BuildDocumenterPromptInput): string {
+  const changedFilesSection = input.changedFiles.map((f) => `- ${f}`).join("\n");
+
   return `You are a documentation update agent. Your job is to check if documentation (especially README.md) needs updating based on recent code changes.
 
 ${INJECTION_DEFENSE_PROMPT}
 
 Changed files:
-${wrapUntrustedContent("changed-files", input.changedFilesSection)}
+${wrapUntrustedContent("changed-files", changedFilesSection)}
 
 Change summary:
 ${wrapUntrustedContent("change-summary", input.changeSummary)}

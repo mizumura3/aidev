@@ -18,7 +18,7 @@ export async function runDocumenter(
 
   const prompt = buildDocumenterPrompt({
     changeSummary: result.changeSummary,
-    changedFilesSection: result.changedFiles.map((f) => `- ${f}`).join("\n"),
+    changedFiles: result.changedFiles,
   });
 
   logger.info("Running documenter agent");

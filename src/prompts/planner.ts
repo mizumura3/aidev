@@ -1,16 +1,21 @@
-import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "../agents/shared.js";
+import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
+import type { Issue } from "../adapters/github.js";
 
 export interface BuildPlannerPromptInput {
-  issue: { number: number; title: string; body: string };
-  languageInstruction: string;
+  issue: Pick<Issue, "number" | "title" | "body">;
+  language: "ja" | "en";
 }
 
 export function buildPlannerPrompt(input: BuildPlannerPromptInput): string {
+  const languageInstruction = input.language === "ja"
+    ? "Write all output text in Japanese."
+    : "Write all output text in English.";
+
   return `Analyze the codebase and the following GitHub issue. Then output your implementation plan as a single JSON object.
 
 ${INJECTION_DEFENSE_PROMPT}
 
-${input.languageInstruction}
+${languageInstruction}
 
 Issue #${input.issue.number}: ${wrapUntrustedContent("issue-title", input.issue.title)}
 

@@ -1,24 +1,32 @@
-import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "../agents/shared.js";
+import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
 import type { Plan } from "../types.js";
 
 export interface BuildReviewerPromptInput {
   plan: Plan;
   diff: string;
-  languageInstruction: string;
-  roundLine: string;
+  language: "ja" | "en";
+  reviewRound?: number;
+  maxReviewRounds?: number;
 }
 
 export function buildReviewerPrompt(input: BuildReviewerPromptInput): string {
+  const languageInstruction = input.language === "ja"
+    ? "Write all output text in Japanese."
+    : "Write all output text in English.";
+  const roundLine = input.reviewRound != null && input.maxReviewRounds != null
+    ? `\n\nThis is review Round ${input.reviewRound} of ${input.maxReviewRounds}.`
+    : "";
+
   return `You are a senior staff engineer conducting a thorough code review. Review the implementation against the plan with the rigor expected of a staff-level reviewer.
 
 ${INJECTION_DEFENSE_PROMPT}
 
-${input.languageInstruction}
+${languageInstruction}
 
 ${wrapUntrustedContent("plan", JSON.stringify(input.plan, null, 2))}
 
 ${wrapUntrustedContent("diff", input.diff)}
-${input.roundLine}
+${roundLine}
 
 Review with the following priorities (in order):
 

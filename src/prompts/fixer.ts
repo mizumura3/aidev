@@ -1,4 +1,4 @@
-import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "../agents/shared.js";
+import { INJECTION_DEFENSE_PROMPT, wrapUntrustedContent } from "./shared.js";
 import type { Plan } from "../types.js";
 
 export interface BuildFixerPromptInput {
