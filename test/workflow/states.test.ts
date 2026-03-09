@@ -437,6 +437,56 @@ describe("init handler", () => {
     expect(result.ctx.base).toBe("cli-branch");
   });
 
+  it("propagates stateTimeouts from issue body config to ctx", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nstateTimeouts:\n  implementing: 1800000\n  reviewing: 600000\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.stateTimeouts).toEqual({
+      implementing: 1800000,
+      reviewing: 600000,
+    });
+  });
+
+  it("writes stateTimeouts back to issue body in resolved config", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nstateTimeouts:\n  implementing: 1800000\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    await handlers.init!(ctx);
+
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("stateTimeouts:"),
+    );
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("implementing: 1800000"),
+    );
+  });
+
   it("writes resolved config back to issue body", async () => {
     const deps = makeDeps();
     const handlers = createStateHandlers(deps);

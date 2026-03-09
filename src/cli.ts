@@ -544,6 +544,7 @@ export function createCli() {
             });
 
             await git.addWorktree(worktreePath, opts.base, cwd);
+            let preserveWorktree = false;
             try {
               const ctx: RunContext = {
                 runId,
@@ -567,7 +568,7 @@ export function createCli() {
               };
 
               const issueStart = performance.now();
-              await runWorkflow(ctx, handlers, persistence, {
+              const result = await runWorkflow(ctx, handlers, persistence, {
                 logger: runLogger,
                 onTransition: (from, to) =>
                   runLogger.info("State transition", { from, to }),
@@ -585,13 +586,26 @@ export function createCli() {
                   await slackNotify(message);
                 },
               });
+
+              if (result.state === "manual_handoff") {
+                preserveWorktree = true;
+                runLogger.warn("Issue handed off — worktree preserved for manual resume", {
+                  issue: issue.number,
+                  timedOutState: result._timedOutState,
+                  reason: result.handoffReason,
+                  worktreePath,
+                  resumeCommand: `aidev run --issue ${issue.number} --repo ${repo} --cwd ${cwd} --resume --yes`,
+                });
+              }
             } finally {
-              await git.removeWorktree(worktreePath, cwd).catch((err) =>
-                runLogger.error("Worktree cleanup failed", {
-                  path: worktreePath,
-                  error: String(err),
-                })
-              );
+              if (!preserveWorktree) {
+                await git.removeWorktree(worktreePath, cwd).catch((err) =>
+                  runLogger.error("Worktree cleanup failed", {
+                    path: worktreePath,
+                    error: String(err),
+                  })
+                );
+              }
             }
           };
 
