@@ -78,13 +78,16 @@ export function createLogger(opts: CreateLoggerOptions = {}): Logger {
     setLogFile(path: string) {
       openStream(path);
     },
+    /**
+     * Flush pending writes and close the underlying file stream.
+     * After calling this method the logger can no longer write to the log file.
+     * Intended to be called once, immediately before process exit.
+     */
     flush(): Promise<void> {
-      return new Promise((resolve, reject) => {
-        if (stream && !stream.destroyed) {
-          stream.write("", (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
+      return new Promise((resolve) => {
+        if (stream && !stream.destroyed && !stream.writableEnded) {
+          stream.once("finish", resolve);
+          stream.end();
         } else {
           resolve();
         }

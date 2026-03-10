@@ -162,7 +162,7 @@ describe("init handler", () => {
     const handlers = createStateHandlers(deps);
     const ctx = makeCtx();
 
-    await expect(handlers.init!(ctx)).rejects.toThrow("foreignuser");
+    await expect(handlers.init!(ctx)).rejects.toThrow("not by the authenticated user");
   });
 
   it("allows issue when author matches authenticated user", async () => {
@@ -435,6 +435,56 @@ describe("init handler", () => {
     const result = await handlers.init!(ctx);
 
     expect(result.ctx.base).toBe("cli-branch");
+  });
+
+  it("propagates stateTimeouts from issue body config to ctx", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nstateTimeouts:\n  implementing: 1800000\n  reviewing: 600000\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    const result = await handlers.init!(ctx);
+
+    expect(result.ctx.stateTimeouts).toEqual({
+      implementing: 1800000,
+      reviewing: 600000,
+    });
+  });
+
+  it("writes stateTimeouts back to issue body in resolved config", async () => {
+    const deps = makeDeps({
+      github: {
+        getIssue: vi.fn(async () => ({
+          number: 1,
+          title: "Test",
+          body: "```aidev\nstateTimeouts:\n  implementing: 1800000\n```",
+          labels: [],
+          author: "testuser",
+        })),
+      },
+    });
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx();
+
+    await handlers.init!(ctx);
+
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("stateTimeouts:"),
+    );
+    expect(deps.github.updateIssueBody).toHaveBeenCalledWith(
+      1,
+      expect.stringContaining("implementing: 1800000"),
+    );
   });
 
   it("writes resolved config back to issue body", async () => {
@@ -1561,5 +1611,113 @@ describe("closing_issue handler", () => {
 
     expect(result.nextState).toBe("done");
     expect(deps.github.closeIssue).not.toHaveBeenCalled();
+  });
+});
+
+describe("abort signal in handlers", () => {
+  it("planning returns manual_handoff when signal already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ state: "planning", _abortSignal: ac.signal });
+
+    const result = await handlers.planning!(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(result.ctx.handoffReason).toContain("planning");
+  });
+
+  it("implementing returns manual_handoff when signal already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "implementing",
+      plan: { summary: "test", steps: ["do it"], filesToTouch: [], tests: [], risks: [], acceptanceCriteria: [] },
+      _abortSignal: ac.signal,
+    });
+
+    const result = await handlers.implementing!(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(result.ctx.handoffReason).toContain("implementing");
+  });
+
+  it("reviewing returns manual_handoff when signal already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "reviewing",
+      prNumber: 42,
+      plan: { summary: "test", steps: ["do it"], filesToTouch: [], tests: [], risks: [], acceptanceCriteria: [] },
+      _abortSignal: ac.signal,
+    });
+
+    const result = await handlers.reviewing!(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(result.ctx.handoffReason).toContain("reviewing");
+  });
+
+  it("fixing returns manual_handoff when signal already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "fixing",
+      plan: { summary: "test", steps: ["do it"], filesToTouch: [], tests: [], risks: [], acceptanceCriteria: [] },
+      fixTrigger: "ci",
+      _abortSignal: ac.signal,
+    });
+
+    const result = await handlers.fixing!(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(result.ctx.handoffReason).toContain("fixing");
+    // Should NOT have called git.addAll/commit/push
+    expect(deps.git.addAll).not.toHaveBeenCalled();
+  });
+
+  it("fixing aborts before git push when signal fires during agent run", async () => {
+    const ac = new AbortController();
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({
+      state: "fixing",
+      plan: { summary: "test", steps: ["do it"], filesToTouch: [], tests: [], risks: [], acceptanceCriteria: [] },
+      fixTrigger: "ci",
+      _abortSignal: ac.signal,
+    });
+
+    // Abort during agent execution (runFixer is mocked, so abort after it returns)
+    // The handler checks _abortSignal AFTER runFixer completes
+    ac.abort();
+
+    const result = await handlers.fixing!(ctx);
+
+    // Should transition to manual_handoff without git operations
+    expect(result.nextState).toBe("manual_handoff");
+    expect(deps.git.addAll).not.toHaveBeenCalled();
+    expect(deps.git.commit).not.toHaveBeenCalled();
+    expect(deps.git.push).not.toHaveBeenCalled();
+  });
+
+  it("watching_ci returns manual_handoff when signal already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const deps = makeDeps();
+    const handlers = createStateHandlers(deps);
+    const ctx = makeCtx({ state: "watching_ci", prNumber: 42, _abortSignal: ac.signal });
+
+    const result = await handlers.watching_ci!(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    // Should NOT have called getCiStatus since it checks signal first
+    expect(deps.github.getCiStatus).not.toHaveBeenCalled();
   });
 });

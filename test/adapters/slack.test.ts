@@ -66,6 +66,13 @@ describe("formatSlackMessage", () => {
     const msg = formatSlackMessage({ ...baseInput, issueTitle: undefined });
     expect(msg).toContain("Issue #42");
   });
+
+  it("formats a manual_handoff message with raised_hand icon", () => {
+    const msg = formatSlackMessage({ ...baseInput, finalState: "manual_handoff" });
+    expect(msg).toContain(":raised_hand:");
+    expect(msg).toContain("handed off");
+    expect(msg).toContain("#42");
+  });
 });
 
 describe("createSlackNotifier", () => {

@@ -176,4 +176,137 @@ describe("parseIssueConfig", () => {
     expect(result.language).toBeUndefined();
     expect(result.maxFixAttempts).toBe(3);
   });
+
+  it("parses stateTimeouts with valid state keys", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 1800000",
+      "  reviewing: 600000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toEqual({
+      implementing: 1800000,
+      reviewing: 600000,
+    });
+  });
+
+  it("ignores stateTimeouts with invalid state keys", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 1800000",
+      "  nonexistent: 600000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toEqual({
+      implementing: 1800000,
+    });
+  });
+
+  it("ignores stateTimeouts with non-numeric values", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: abc",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toBeUndefined();
+  });
+
+  it("rejects stateTimeouts below MIN_STATE_TIMEOUT_MS (5000ms)", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 1",
+      "  reviewing: 10000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    // implementing: 1ms is below 5000ms minimum → rejected
+    // reviewing: 10000ms is above minimum → accepted
+    expect(result.stateTimeouts).toEqual({
+      reviewing: 10000,
+    });
+  });
+
+  it("rejects stateTimeouts of exactly MIN_STATE_TIMEOUT_MS - 1", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 4999",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toBeUndefined();
+  });
+
+  it("accepts stateTimeouts of exactly MIN_STATE_TIMEOUT_MS", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 5000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toEqual({
+      implementing: 5000,
+    });
+  });
+
+  it("rejects stateTimeouts above MAX_STATE_TIMEOUT_MS (1 hour)", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 7200000",
+      "  reviewing: 600000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    // implementing: 7200000 (2h) exceeds 3600000 (1h) max → rejected
+    // reviewing: 600000 (10min) is within range → accepted
+    expect(result.stateTimeouts).toEqual({
+      reviewing: 600000,
+    });
+  });
+
+  it("accepts stateTimeouts of exactly MAX_STATE_TIMEOUT_MS", () => {
+    const body = [
+      "```aidev",
+      "stateTimeouts:",
+      "  implementing: 3600000",
+      "```",
+    ].join("\n");
+    const result = parseIssueConfig(body);
+    expect(result.stateTimeouts).toEqual({
+      implementing: 3600000,
+    });
+  });
+
+  it("rejects base field with path traversal", () => {
+    const body = "```aidev\nbase: ../../etc/passwd\n```";
+    const result = parseIssueConfig(body);
+    expect(result.base).toBeUndefined();
+  });
+
+  it("rejects base field with special characters", () => {
+    const body = "```aidev\nbase: main; rm -rf /\n```";
+    const result = parseIssueConfig(body);
+    expect(result.base).toBeUndefined();
+  });
+
+  it("accepts valid branch names in base field", () => {
+    const body = "```aidev\nbase: release/1.3\n```";
+    const result = parseIssueConfig(body);
+    expect(result.base).toBe("release/1.3");
+  });
+
+  it("accepts tag-style base values", () => {
+    const body = "```aidev\nbase: v1.2.0\n```";
+    const result = parseIssueConfig(body);
+    expect(result.base).toBe("v1.2.0");
+  });
 });

@@ -1,4 +1,5 @@
 import type { AgentRunner, ProgressEvent } from "../agents/runner.js";
+import { TERMINAL_STATES } from "../types.js";
 import type { StateHandler, RunContext, RunState, Review, Language } from "../types.js";
 import type { StateHandlerMap } from "./engine.js";
 import type { GitAdapter } from "../adapters/git.js";
@@ -43,7 +44,7 @@ function toPlanningTarget(workItem: Issue | PullRequest): Issue {
   };
 }
 
-const terminalStates: ReadonlySet<RunState> = new Set(["done", "failed", "blocked"]);
+const terminalStates: ReadonlySet<RunState> = new Set(TERMINAL_STATES);
 
 function formatReviewComment(review: Review, round: number, maxRounds: number, language: Language): string {
   const safeMaxRounds = maxRounds ?? 1;
@@ -158,6 +159,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     if (merged.base !== undefined) patch.base = merged.base;
     if (merged.skip) patch.skipStates = merged.skip as SkippableState[];
     if (merged.language !== undefined) patch.language = merged.language;
+    if (merged.stateTimeouts !== undefined) patch.stateTimeouts = merged.stateTimeouts;
 
     // Re-create runner if backend/model changed via config
     if (merged.backend || merged.model) {
@@ -185,6 +187,7 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       backend: merged.backend,
       model: merged.model,
       language: mergedCtx.language,
+      stateTimeouts: mergedCtx.stateTimeouts,
     };
     const configBlock = buildResolvedConfigBlock(resolvedConfig);
     const updatedBody = upsertAidevBlock(body, configBlock);
@@ -263,6 +266,9 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
   };
 
   const planning: StateHandler = async (ctx) => {
+    if (ctx._abortSignal?.aborted) {
+      return transition(ctx, "manual_handoff", { handoffReason: "planning aborted before start" });
+    }
     const workItem =
       ctx.targetKind === "pr"
         ? toPlanningTarget(await github.getPr(ctx.prNumber!))
@@ -290,6 +296,9 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const implementing: StateHandler = async (ctx) => {
     if (!ctx.plan) throw new Error("No plan available");
+    if (ctx._abortSignal?.aborted) {
+      return transition(ctx, "manual_handoff", { handoffReason: "implementing aborted before start" });
+    }
     const implStart = performance.now();
     const result = await runImplementer(
       {
@@ -317,6 +326,9 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
       return transition(ctx, "watching_ci");
     }
     if (!ctx.plan) throw new Error("No plan available");
+    if (ctx._abortSignal?.aborted) {
+      return transition(ctx, "manual_handoff", { handoffReason: "reviewing aborted before start" });
+    }
     const diff = await git.diff(ctx.base, ctx.cwd);
     const currentRound = (ctx.reviewRound ?? 0) + 1;
     const maxRounds = ctx.maxReviewRounds ?? 1;
@@ -407,8 +419,15 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     const pollInterval = 15 * 1000; // 15 seconds
     const gracePeriod = 30 * 1000; // 30 seconds for CI check runs to register
     const start = Date.now();
+    const signal = ctx._abortSignal;
 
     while (Date.now() - start < maxWait) {
+      if (signal?.aborted) {
+        logger.info("watching_ci aborted by timeout signal");
+        return transition(ctx, "manual_handoff", {
+          handoffReason: "watching_ci aborted by timeout",
+        });
+      }
       const status = await github.getCiStatus(ctx.branch);
       if (status === "passing") {
         logger.info("CI passed");
@@ -431,7 +450,14 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
         if (!shouldAutoMerge(ctx)) return transition(ctx, "done");
         return transition(ctx, "merging");
       }
-      await new Promise((r) => setTimeout(r, pollInterval));
+      // Abort-aware sleep: wake up early if timeout signal fires
+      await new Promise<void>((resolve) => {
+        const onAbort = () => { clearTimeout(timer); resolve(); };
+        const timer = setTimeout(() => {
+          resolve();
+        }, pollInterval);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
     }
 
     logger.error("CI timed out");
@@ -440,6 +466,9 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
 
   const fixing: StateHandler = async (ctx) => {
     if (!ctx.plan) throw new Error("No plan available");
+    if (ctx._abortSignal?.aborted) {
+      return transition(ctx, "manual_handoff", { handoffReason: "fixing aborted before start" });
+    }
     const isReviewFix = ctx.fixTrigger === "review";
     const fixerInput = isReviewFix
       ? { plan: ctx.plan, reviewFeedback: ctx.review!.mustFix.join("\n"), cwd: ctx.cwd }
@@ -453,6 +482,12 @@ export function createStateHandlers(deps: Deps): StateHandlerMap {
     );
     const fixElapsed = Math.round(performance.now() - fixStart);
     logger.info("Fix applied", { rootCause: fix.rootCause, trigger: ctx.fixTrigger ?? "ci", agentElapsedMs: fixElapsed });
+
+    // Check abort signal before git operations to prevent ghost commits after timeout
+    if (ctx._abortSignal?.aborted) {
+      logger.warn("fixing: agent completed but abort signal fired — skipping git commit/push");
+      return transition(ctx, "manual_handoff", { handoffReason: "fixing aborted after agent completion" });
+    }
 
     await git.addAll(ctx.cwd);
     await git.commit(`fix: ${fix.rootCause}`, ctx.cwd);

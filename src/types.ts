@@ -23,8 +23,17 @@ export const RunStateSchema = z.enum([
   "done",
   "failed",
   "blocked",
+  "manual_handoff",
 ]);
 export type RunState = z.infer<typeof RunStateSchema>;
+
+export const TERMINAL_STATES = ["done", "failed", "blocked", "manual_handoff"] as const satisfies readonly RunState[];
+export type TerminalState = (typeof TERMINAL_STATES)[number];
+
+/** Type guard: narrows RunState to TerminalState */
+export function isTerminalState(state: RunState): state is TerminalState {
+  return (TERMINAL_STATES as readonly string[]).includes(state);
+}
 
 export const PlanSchema = z.object({
   summary: z.string(),
@@ -89,6 +98,9 @@ export const RunContextSchema = z.object({
   review: ReviewSchema.optional(),
   fix: FixSchema.optional(),
   fixTrigger: z.enum(["ci", "review"]).optional(),
+  handoffReason: z.string().optional(),
+  _timedOutState: RunStateSchema.optional(),
+  stateTimeouts: z.record(RunStateSchema, z.number()).optional(),
 }).superRefine((ctx, issueCtx) => {
   if (ctx.targetKind === "issue" && ctx.issueNumber == null) {
     issueCtx.addIssue({
@@ -108,6 +120,17 @@ export const RunContextSchema = z.object({
 export type RunContext = z.infer<typeof RunContextSchema> & {
   /** Set of CLI flags explicitly specified (transient, not persisted) */
   _cliExplicit?: Set<string>;
+  /**
+   * Abort signal injected by `withTimeout`. Handlers should check
+   * `ctx._abortSignal?.aborted` before starting expensive operations
+   * (e.g. spawning child processes, AI API calls) and pass the signal
+   * to cancellable APIs where possible.
+   *
+   * NOTE: Cancellation is cooperative — aborting the signal does not
+   * forcibly terminate the handler. If the handler ignores the signal,
+   * it will continue running in the background after timeout.
+   */
+  _abortSignal?: AbortSignal;
 };
 
 export type StateHandler = (

@@ -1,26 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   runWorkflow,
+  withTimeout,
+  MIN_STATE_TIMEOUT_MS,
   type StateHandlerMap,
   type Persistence,
 } from "../../src/workflow/engine.js";
-import type { RunContext, RunState } from "../../src/types.js";
+import type { RunContext, RunState, StateHandler } from "../../src/types.js";
 import type { Logger } from "../../src/util/logger.js";
 
 function makeCtx(overrides: Partial<RunContext> = {}): RunContext {
   return {
     runId: "test-run",
+    targetKind: "issue",
     issueNumber: 1,
     repo: "owner/repo",
     cwd: "/tmp/repo",
     state: "init",
     branch: "aidev/issue-1",
+    base: "main",
     maxFixAttempts: 3,
     fixAttempts: 0,
+    maxReviewRounds: 1,
+    reviewRound: 0,
     dryRun: false,
     autoMerge: false,
+    language: "ja",
     issueLabels: [],
     skipStates: [],
+    skipAuthorCheck: false,
     ...overrides,
   };
 }
@@ -189,6 +197,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await runWorkflow(ctx, handlers, persistence, { logger });
@@ -215,6 +225,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await runWorkflow(ctx, handlers, persistence, { logger });
@@ -302,6 +314,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await expect(
@@ -336,6 +350,8 @@ describe("runWorkflow", () => {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
     };
 
     await expect(
@@ -385,5 +401,380 @@ describe("runWorkflow", () => {
       { from: "init", to: "planning" },
       { from: "planning", to: "done" },
     ]);
+  });
+
+  it("stops at terminal state manual_handoff", async () => {
+    const handlers: StateHandlerMap = {
+      implementing: vi.fn(async (ctx) => ({
+        nextState: "manual_handoff" as RunState,
+        ctx: { ...ctx, handoffReason: "test timeout" },
+      })),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({ state: "implementing" });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+
+    expect(result.state).toBe("manual_handoff");
+    expect(result.handoffReason).toBe("test timeout");
+  });
+
+  it("calls onComplete for manual_handoff terminal state", async () => {
+    const handlers: StateHandlerMap = {
+      init: vi.fn(async (ctx) => ({
+        nextState: "manual_handoff" as RunState,
+        ctx,
+      })),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx();
+    const onComplete = vi.fn(async () => {});
+
+    await runWorkflow(ctx, handlers, persistence, { onComplete });
+
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "manual_handoff" })
+    );
+  });
+});
+
+describe("withTimeout", () => {
+  it("returns handler result when handler completes before timeout", async () => {
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "reviewing" as RunState,
+      ctx,
+    });
+
+    const wrapped = withTimeout(inner, 5000);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("reviewing");
+  });
+
+  it("returns manual_handoff when handler exceeds timeout", async () => {
+    const inner: StateHandler = async (ctx) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+
+    const logger: Logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const wrapped = withTimeout(inner, 50, logger);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(result.ctx._timedOutState).toBe("implementing");
+    expect(result.ctx.handoffReason).toContain("implementing");
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("returns handler result when timeoutMs is zero (no-op)", async () => {
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "reviewing" as RunState,
+      ctx,
+    });
+
+    const wrapped = withTimeout(inner, 0);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("reviewing");
+  });
+
+  it("returns handler result when timeoutMs is negative (no-op)", async () => {
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "reviewing" as RunState,
+      ctx,
+    });
+
+    const wrapped = withTimeout(inner, -1000);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("reviewing");
+  });
+
+  it("returns handler result when timeoutMs is Infinity", async () => {
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "reviewing" as RunState,
+      ctx,
+    });
+
+    const wrapped = withTimeout(inner, Infinity);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("reviewing");
+  });
+
+  it("preserves context fields through timeout wrapper", async () => {
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "committing" as RunState,
+      ctx: { ...ctx, fixAttempts: 2 },
+    });
+
+    const wrapped = withTimeout(inner, 5000);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.ctx.fixAttempts).toBe(2);
+  });
+
+  it("propagates handler rejection instead of swallowing it", async () => {
+    const error = new Error("handler crashed");
+    const inner: StateHandler = async () => {
+      throw error;
+    };
+
+    const wrapped = withTimeout(inner, 5000);
+    const ctx = makeCtx({ state: "implementing" });
+
+    await expect(wrapped(ctx)).rejects.toBe(error);
+  });
+
+  it("clears timer when handler completes before timeout", async () => {
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    const inner: StateHandler = async (ctx) => ({
+      nextState: "reviewing" as RunState,
+      ctx,
+    });
+
+    const wrapped = withTimeout(inner, 60000);
+    const ctx = makeCtx({ state: "implementing" });
+    await wrapped(ctx);
+
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+
+  it("injects _abortSignal into handler ctx", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const inner: StateHandler = async (ctx) => {
+      receivedSignal = ctx._abortSignal;
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+
+    const wrapped = withTimeout(inner, 60000);
+    const ctx = makeCtx({ state: "implementing" });
+    await wrapped(ctx);
+
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal!.aborted).toBe(false);
+  });
+
+  it("aborts _abortSignal when timeout fires", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const inner: StateHandler = async (ctx) => {
+      receivedSignal = ctx._abortSignal;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+
+    const wrapped = withTimeout(inner, 30);
+    const ctx = makeCtx({ state: "implementing" });
+    const result = await wrapped(ctx);
+
+    expect(result.nextState).toBe("manual_handoff");
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal!.aborted).toBe(true);
+  });
+});
+
+describe("runWorkflow with stateTimeouts", () => {
+  it("applies timeout to handler when stateTimeouts >= MIN_STATE_TIMEOUT_MS", async () => {
+    const slowHandler: StateHandler = async (ctx) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return { nextState: "done" as RunState, ctx };
+    };
+    const handlers: StateHandlerMap = {
+      implementing: slowHandler,
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({
+      state: "implementing",
+      stateTimeouts: { implementing: MIN_STATE_TIMEOUT_MS },
+    });
+
+    // Handler completes in 200ms which is before MIN_STATE_TIMEOUT_MS (5000ms),
+    // so timeout should NOT fire — handler completes normally
+    const result = await runWorkflow(ctx, handlers, persistence);
+    expect(result.state).toBe("done");
+  });
+
+  it("ignores stateTimeouts below MIN_STATE_TIMEOUT_MS", async () => {
+    const handlers: StateHandlerMap = {
+      implementing: async (ctx) => {
+        // This would time out if 50ms were applied, but MIN enforcement skips it
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { nextState: "done" as RunState, ctx };
+      },
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({
+      state: "implementing",
+      stateTimeouts: { implementing: 50 },
+    });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+    // 50ms < MIN_STATE_TIMEOUT_MS → timeout not applied → handler completes
+    expect(result.state).toBe("done");
+  });
+
+  it("does not apply timeout when stateTimeouts is not set for the state", async () => {
+    const handlers: StateHandlerMap = {
+      init: makeHandler("done"),
+    };
+    const persistence = makePersistence();
+    const ctx = makeCtx({
+      stateTimeouts: { implementing: MIN_STATE_TIMEOUT_MS },
+    });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+
+    expect(result.state).toBe("done");
+  });
+});
+
+describe("E2E: timeout → manual_handoff → resume → done", () => {
+  it("full lifecycle with real timeout firing", async () => {
+    let implementingCallCount = 0;
+
+    // First call: slow handler wrapped with withTimeout (30ms timeout, 200ms work)
+    // Second call (resume): fast handler that completes immediately
+    const rawImplementingHandler: StateHandler = async (ctx) => {
+      implementingCallCount++;
+      if (implementingCallCount === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { nextState: "reviewing" as RunState, ctx };
+      }
+      return { nextState: "reviewing" as RunState, ctx };
+    };
+
+    const handlers: StateHandlerMap = {
+      init: makeHandler("implementing"),
+      // Use withTimeout directly (bypasses MIN_STATE_TIMEOUT_MS in runWorkflow)
+      implementing: withTimeout(rawImplementingHandler, 30),
+      reviewing: makeHandler("done"),
+    };
+
+    const savedContexts: RunContext[] = [];
+    const persistence: Persistence = {
+      save: vi.fn(async (ctx) => { savedContexts.push({ ...ctx }); }),
+      load: vi.fn(async () => null),
+    };
+
+    // Phase 1: Run — implementing handler has withTimeout(30ms)
+    const phase1Ctx = makeCtx({ state: "init" });
+
+    const phase1Result = await runWorkflow(phase1Ctx, handlers, persistence);
+
+    expect(phase1Result.state).toBe("manual_handoff");
+    expect(phase1Result._timedOutState).toBe("implementing");
+    expect(phase1Result.handoffReason).toContain("timed out");
+
+    // Verify persistence saved the manual_handoff state
+    const handoffSave = savedContexts.find((c) => c.state === "manual_handoff");
+    expect(handoffSave).toBeDefined();
+    expect(handoffSave!._timedOutState).toBe("implementing");
+
+    // Phase 2: Resume from manual_handoff — use raw handler (no timeout)
+    const resumeHandlers: StateHandlerMap = {
+      ...handlers,
+      implementing: rawImplementingHandler,
+    };
+
+    const phase2Ctx = makeCtx({
+      ...phase1Result,
+      state: phase1Result._timedOutState as RunState,
+    });
+
+    const phase2Result = await runWorkflow(phase2Ctx, resumeHandlers, persistence);
+
+    expect(phase2Result.state).toBe("done");
+    expect(implementingCallCount).toBe(2);
+
+    const savedStates = savedContexts.map((c) => c.state);
+    expect(savedStates).toContain("implementing");
+    expect(savedStates).toContain("manual_handoff");
+    expect(savedStates).toContain("reviewing");
+    expect(savedStates).toContain("done");
+  });
+
+  it("preserves handoffReason and _timedOutState through persistence", async () => {
+    // Use withTimeout directly to bypass MIN_STATE_TIMEOUT_MS
+    const handlers: StateHandlerMap = {
+      reviewing: withTimeout(async (ctx) => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { nextState: "committing" as RunState, ctx };
+      }, 30),
+    };
+
+    let lastSaved: RunContext | null = null;
+    const persistence: Persistence = {
+      save: vi.fn(async (ctx) => { lastSaved = { ...ctx }; }),
+      load: vi.fn(async () => lastSaved),
+    };
+
+    // No stateTimeouts needed — handler already wrapped with withTimeout
+    const ctx = makeCtx({ state: "reviewing" });
+
+    const result = await runWorkflow(ctx, handlers, persistence);
+
+    expect(result.state).toBe("manual_handoff");
+
+    // Simulate loading from persistence (as CLI --resume would)
+    const loaded = await persistence.load("test-run");
+    expect(loaded).not.toBeNull();
+    expect(loaded!.state).toBe("manual_handoff");
+    expect(loaded!._timedOutState).toBe("reviewing");
+    expect(loaded!.handoffReason).toContain("reviewing");
+    expect(loaded!.handoffReason).toContain("timed out");
+  });
+});
+
+describe("runWorkflow persistence error handling", () => {
+  it("re-throws when persistence.save fails", async () => {
+    const saveError = new Error("disk full");
+    const handlers: StateHandlerMap = { init: makeHandler("done") };
+    const persistence: Persistence = {
+      save: vi.fn(async () => { throw saveError; }),
+      load: vi.fn(async () => null),
+    };
+    const ctx = makeCtx();
+
+    await expect(runWorkflow(ctx, handlers, persistence)).rejects.toBe(saveError);
+  });
+
+  it("logs error context when persistence.save fails", async () => {
+    const saveError = new Error("disk full");
+    const handlers: StateHandlerMap = { init: makeHandler("done") };
+    const persistence: Persistence = {
+      save: vi.fn(async () => { throw saveError; }),
+      load: vi.fn(async () => null),
+    };
+    const ctx = makeCtx();
+    const logger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      setLogFile: vi.fn(),
+      flush: vi.fn(async () => {}),
+    };
+
+    await expect(
+      runWorkflow(ctx, handlers, persistence, { logger })
+    ).rejects.toBe(saveError);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("persist"),
+      expect.objectContaining({
+        state: "done",
+        runId: "test-run",
+      })
+    );
   });
 });

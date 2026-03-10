@@ -1,9 +1,11 @@
+import type { TerminalState } from "../types.js";
+
 export interface SlackMessageInput {
   targetKind: "issue" | "pr";
   targetNumber: number;
   issueTitle?: string;
   repo: string;
-  finalState: "done" | "failed" | "blocked";
+  finalState: TerminalState;
   elapsedMs: number;
   prNumber?: number;
 }
@@ -26,8 +28,8 @@ function formatElapsed(ms: number): string {
 }
 
 export function formatSlackMessage(input: SlackMessageInput): string {
-  const iconMap = { done: ":white_check_mark:", failed: ":x:", blocked: ":warning:" } as const;
-  const statusMap = { done: "completed", failed: "failed", blocked: "blocked" } as const;
+  const iconMap = { done: ":white_check_mark:", failed: ":x:", blocked: ":warning:", manual_handoff: ":raised_hand:" } as const;
+  const statusMap = { done: "completed", failed: "failed", blocked: "blocked", manual_handoff: "handed off" } as const;
   const icon = iconMap[input.finalState];
   const status = statusMap[input.finalState];
   const targetLabel = input.targetKind === "pr" ? "PR" : "Issue";

@@ -30,6 +30,7 @@ describe("RunStateSchema", () => {
       "done",
       "failed",
       "blocked",
+      "manual_handoff",
     ];
     for (const state of validStates) {
       expect(RunStateSchema.parse(state)).toBe(state);
@@ -325,5 +326,62 @@ describe("RunContextSchema", () => {
   it("accepts language en", () => {
     const parsed = RunContextSchema.parse({ ...validContext, language: "en" });
     expect(parsed.language).toBe("en");
+  });
+
+  it("accepts handoffReason", () => {
+    const parsed = RunContextSchema.parse({
+      ...validContext,
+      state: "manual_handoff",
+      handoffReason: "implementing timed out after 30m",
+    });
+    expect(parsed.handoffReason).toBe("implementing timed out after 30m");
+  });
+
+  it("defaults handoffReason to undefined", () => {
+    const parsed = RunContextSchema.parse(validContext);
+    expect(parsed.handoffReason).toBeUndefined();
+  });
+
+  it("accepts _timedOutState as valid RunState", () => {
+    const parsed = RunContextSchema.parse({
+      ...validContext,
+      state: "manual_handoff",
+      _timedOutState: "implementing",
+    });
+    expect(parsed._timedOutState).toBe("implementing");
+  });
+
+  it("rejects _timedOutState with invalid state", () => {
+    expect(() =>
+      RunContextSchema.parse({
+        ...validContext,
+        _timedOutState: "nonexistent_state",
+      })
+    ).toThrow();
+  });
+
+  it("accepts stateTimeouts with valid state keys", () => {
+    const parsed = RunContextSchema.parse({
+      ...validContext,
+      stateTimeouts: { implementing: 1800000, reviewing: 600000 },
+    });
+    expect(parsed.stateTimeouts).toEqual({
+      implementing: 1800000,
+      reviewing: 600000,
+    });
+  });
+
+  it("rejects stateTimeouts with invalid state keys", () => {
+    expect(() =>
+      RunContextSchema.parse({
+        ...validContext,
+        stateTimeouts: { nonexistent: 1000 },
+      })
+    ).toThrow();
+  });
+
+  it("defaults stateTimeouts to undefined", () => {
+    const parsed = RunContextSchema.parse(validContext);
+    expect(parsed.stateTimeouts).toBeUndefined();
   });
 });

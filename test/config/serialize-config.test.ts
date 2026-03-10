@@ -68,6 +68,58 @@ describe("serializeConfig", () => {
     expect(result).not.toContain("model");
   });
 
+  it("serializes stateTimeouts as nested map", () => {
+    const config: ResolvedConfig = {
+      maxFixAttempts: 3,
+      maxReviewRounds: 1,
+      autoMerge: false,
+      dryRun: false,
+      base: "main",
+      language: "ja",
+      skip: [],
+      stateTimeouts: { implementing: 1800000, reviewing: 600000 },
+    };
+
+    const result = serializeConfig(config);
+    expect(result).toContain("stateTimeouts:");
+    expect(result).toContain("  implementing: 1800000");
+    expect(result).toContain("  reviewing: 600000");
+  });
+
+  it("sorts stateTimeouts entries alphabetically", () => {
+    const config: ResolvedConfig = {
+      maxFixAttempts: 3,
+      maxReviewRounds: 1,
+      autoMerge: false,
+      dryRun: false,
+      base: "main",
+      language: "ja",
+      skip: [],
+      stateTimeouts: { reviewing: 600000, implementing: 1800000 },
+    };
+
+    const result = serializeConfig(config);
+    const lines = result.split("\n");
+    const timeoutLines = lines.filter((l) => l.startsWith("  ") && l.includes(":"));
+    expect(timeoutLines[0]).toContain("implementing");
+    expect(timeoutLines[1]).toContain("reviewing");
+  });
+
+  it("omits stateTimeouts when empty or undefined", () => {
+    const config: ResolvedConfig = {
+      maxFixAttempts: 3,
+      maxReviewRounds: 1,
+      autoMerge: false,
+      dryRun: false,
+      base: "main",
+      language: "ja",
+      skip: [],
+    };
+
+    const result = serializeConfig(config);
+    expect(result).not.toContain("stateTimeouts");
+  });
+
   it("omits skip line when skip is empty array", () => {
     const config: ResolvedConfig = {
       maxFixAttempts: 3,
@@ -119,6 +171,30 @@ describe("buildResolvedConfigBlock", () => {
         "```",
       ].join("\n"),
     );
+  });
+});
+
+describe("stateTimeouts round-trip", () => {
+  it("serialize → parse preserves stateTimeouts values", async () => {
+    const { parseConfigBlock } = await import("../../src/config/issue-config.js");
+    const config: ResolvedConfig = {
+      maxFixAttempts: 3,
+      maxReviewRounds: 1,
+      autoMerge: false,
+      dryRun: false,
+      base: "main",
+      language: "ja",
+      skip: [],
+      stateTimeouts: { implementing: 1800000, reviewing: 600000 },
+    };
+
+    const serialized = serializeConfig(config);
+    const parsed = parseConfigBlock(serialized);
+
+    expect(parsed.stateTimeouts).toEqual({
+      implementing: 1800000,
+      reviewing: 600000,
+    });
   });
 });
 

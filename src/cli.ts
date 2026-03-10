@@ -17,7 +17,7 @@ import { createSlackNotifier, formatSlackMessage } from "./adapters/slack.js";
 import { loadRepoConfig } from "./config/repo-config.js";
 import { writeAidevYml } from "./config/init.js";
 import { runPreflightChecks } from "./preflight.js";
-import type { RunContext } from "./types.js";
+import { RunStateSchema, TERMINAL_STATES, isTerminalState, type RunContext, type RunState, type TerminalState } from "./types.js";
 import { formatElapsed, formatProgressEvent } from "./agents/shared.js";
 import { formatErrorDetails } from "./util/error.js";
 
@@ -26,7 +26,9 @@ function createFilePersistence(baseDir: string): Persistence {
     async save(ctx) {
       const dir = join(baseDir, ctx.runId);
       await mkdir(dir, { recursive: true });
-      await writeFile(join(dir, "state.json"), JSON.stringify(ctx, null, 2));
+      // Strip transient fields that are not JSON-serializable or not meaningful across sessions
+      const { _abortSignal, _cliExplicit, ...serializable } = ctx;
+      await writeFile(join(dir, "state.json"), JSON.stringify(serializable, null, 2));
 
       if (ctx.plan)
         await writeFile(
@@ -186,6 +188,42 @@ export function createCli() {
         if (saved.state === "done" && saved.dryRun) {
           ctx.state = "creating_pr";
         }
+        // If previous run was handed off due to timeout, resume from the timed-out state
+        if (saved.state === "manual_handoff") {
+          if (saved._timedOutState) {
+            const parsed = RunStateSchema.safeParse(saved._timedOutState);
+            if (parsed.success) {
+              ctx.state = parsed.data;
+            } else {
+              logger.error("Invalid _timedOutState in saved run, falling back to init", {
+                _timedOutState: saved._timedOutState,
+              });
+              ctx.state = "init";
+            }
+          } else {
+            logger.warn("Resuming from manual_handoff with no _timedOutState, restarting from init");
+            ctx.state = "init";
+          }
+          // Clear handoff metadata to avoid stale data in the resumed run
+          delete ctx._timedOutState;
+          delete ctx.handoffReason;
+          // Clear only the timeout for the state that timed out to prevent
+          // re-triggering. Other state timeouts remain in effect.
+          if (ctx.stateTimeouts && saved._timedOutState) {
+            const timedOutKey = saved._timedOutState as RunState;
+            if (ctx.stateTimeouts[timedOutKey] != null) {
+              logger.info("Clearing timeout for timed-out state", {
+                state: timedOutKey,
+                removedTimeout: ctx.stateTimeouts[timedOutKey],
+                remainingTimeouts: Object.keys(ctx.stateTimeouts).filter(k => k !== timedOutKey),
+              });
+              delete ctx.stateTimeouts[timedOutKey];
+              if (Object.keys(ctx.stateTimeouts).length === 0) {
+                delete ctx.stateTimeouts;
+              }
+            }
+          }
+        }
       } else {
         const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
         const cwd = opts.cwd;
@@ -315,24 +353,35 @@ export function createCli() {
 
       let exitCode = 0;
       let worktreeCreated = false;
+      let resultState: string | undefined;
 
       // Determine whether to reuse existing worktree on resume.
-      // Terminal states (done without dryRun, failed, blocked) get a fresh worktree.
-      // Non-terminal states and done+dryRun (→creating_pr) need existing changes preserved.
-      const terminalStates = new Set(["done", "failed", "blocked"]);
+      // Terminal states get a fresh worktree, except:
+      // - done+dryRun (→creating_pr): needs existing changes preserved
+      // - manual_handoff resume: state changed to _timedOutState, needs worktree
+      const terminalStates = new Set<string>(TERMINAL_STATES);
       const shouldReuseWorktree = opts.resume
         && (!terminalStates.has(ctx.state) || (ctx.state === "done" && ctx.dryRun));
 
       try {
         if (shouldReuseWorktree) {
           if (!existsSync(worktreePath)) {
-            logger.error("Worktree not found for resume. The previous worktree may have been cleaned up.", { path: worktreePath });
-            await logger.flush();
-            process.exit(1);
+            // Worktree was deleted between handoff and resume (e.g. manual cleanup).
+            // Uncommitted work is lost — recreate worktree and restart from init.
+            logger.warn("Worktree not found for resume — recreating from scratch", {
+              path: worktreePath,
+              originalState: ctx.state,
+            });
+            await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
+            await git.addWorktree(worktreePath, ctx.base, originalCwd);
+            ctx.state = "init";
+            ctx.cwd = worktreePath;
+            worktreeCreated = true;
+          } else {
+            ctx.cwd = worktreePath;
+            worktreeCreated = true;
+            logger.info("Reusing existing worktree for resume", { path: worktreePath });
           }
-          ctx.cwd = worktreePath;
-          worktreeCreated = true;
-          logger.info("Reusing existing worktree for resume", { path: worktreePath });
         } else {
           // Remove stale worktree from a previous interrupted run, if any
           await git.removeWorktree(worktreePath, originalCwd).catch(() => {});
@@ -359,13 +408,14 @@ export function createCli() {
             }
           },
           onComplete: async (finalCtx) => {
+            if (!isTerminalState(finalCtx.state)) return;
             const elapsedMs = Math.round(performance.now() - workflowStart);
             const message = formatSlackMessage({
               targetKind: finalCtx.targetKind,
               targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
               issueTitle: finalCtx.issueTitle,
               repo: finalCtx.repo,
-              finalState: finalCtx.state as "done" | "failed" | "blocked",
+              finalState: finalCtx.state,
               elapsedMs,
               prNumber: finalCtx.prNumber,
             });
@@ -383,6 +433,18 @@ export function createCli() {
             summary: result.result?.changeSummary,
           };
           process.stdout.write(JSON.stringify(output) + "\n");
+        } else if (result.state === "manual_handoff") {
+          logger.warn("Devloop handed off - needs human intervention", { runId: ctx.runId });
+          resultState = result.state;
+          const output = {
+            status: "manual_handoff" as const,
+            runId: result.runId,
+            timedOutState: result._timedOutState,
+            reason: result.handoffReason,
+            worktreePath,
+          };
+          process.stdout.write(JSON.stringify(output) + "\n");
+          exitCode = 1;
         } else if (result.state === "blocked") {
           logger.warn("Devloop blocked - needs human discussion", { runId: ctx.runId });
           const output = {
@@ -413,7 +475,9 @@ export function createCli() {
         process.stdout.write(JSON.stringify(output) + "\n");
         exitCode = 1;
       } finally {
-        if (worktreeCreated) {
+        // Preserve worktree if workflow reached manual_handoff (even if crash happened after)
+        const shouldPreserve = resultState === "manual_handoff" || lastKnownState === "manual_handoff";
+        if (worktreeCreated && !shouldPreserve) {
           await git.removeWorktree(worktreePath, originalCwd).catch((err) =>
             logger.error("Worktree cleanup failed", {
               path: worktreePath,
@@ -421,9 +485,12 @@ export function createCli() {
             })
           );
         }
+        if (shouldPreserve) {
+          logger.info("Worktree preserved for resume", { path: worktreePath });
+        }
       }
+      await logger.flush();
       if (exitCode !== 0) {
-        await logger.flush();
         process.exit(exitCode);
       }
     });
@@ -476,19 +543,34 @@ export function createCli() {
       logger.info("Watching for issues", { label: opts.label, repo });
 
       const authenticatedUser = await github.getAuthenticatedUser();
-      const processedIssues = new Set<number>();
+
+      // Track issue status: allow retrying failed issues on next label scan
+      const processedIssues = new Map<number, "running" | "done" | "failed">();
+      let concurrentRuns = 0;
+      let shuttingDown = false;
+      const MAX_CONCURRENT_RUNS = 2;
 
       const poll = async () => {
         const issues = await github.listIssuesByLabel(opts.label);
         for (const issue of issues) {
-          if (processedIssues.has(issue.number)) continue;
-          processedIssues.add(issue.number);
+          const status = processedIssues.get(issue.number);
+          if (status === "running" || status === "done") continue;
 
           if (issue.author !== authenticatedUser) {
             logger.warn("Skipping foreign issue", {
               number: issue.number,
               author: issue.author,
               authenticatedUser,
+            });
+            processedIssues.set(issue.number, "done");
+            continue;
+          }
+
+          if (concurrentRuns >= MAX_CONCURRENT_RUNS) {
+            logger.info("Concurrency limit reached, deferring issue", {
+              number: issue.number,
+              concurrentRuns,
+              max: MAX_CONCURRENT_RUNS,
             });
             continue;
           }
@@ -500,6 +582,8 @@ export function createCli() {
 
           const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
           const worktreePath = join(cwd, ".worktrees", `issue-${issue.number}`);
+          processedIssues.set(issue.number, "running");
+          concurrentRuns++;
 
           const runIssue = async () => {
             const runLogDir = join(baseDir, runId);
@@ -510,6 +594,7 @@ export function createCli() {
             });
 
             await git.addWorktree(worktreePath, opts.base, cwd);
+            let preserveWorktree = false;
             try {
               const ctx: RunContext = {
                 runId,
@@ -533,31 +618,57 @@ export function createCli() {
               };
 
               const issueStart = performance.now();
-              await runWorkflow(ctx, handlers, persistence, {
+              const result = await runWorkflow(ctx, handlers, persistence, {
                 logger: runLogger,
                 onTransition: (from, to) =>
                   runLogger.info("State transition", { from, to }),
                 onComplete: async (finalCtx) => {
+                  if (!isTerminalState(finalCtx.state)) return;
                   const elapsedMs = Math.round(performance.now() - issueStart);
                   const message = formatSlackMessage({
                     targetKind: finalCtx.targetKind,
                     targetNumber: finalCtx.issueNumber ?? finalCtx.prNumber!,
                     issueTitle: finalCtx.issueTitle,
                     repo: finalCtx.repo,
-                    finalState: finalCtx.state as "done" | "failed" | "blocked",
+                    finalState: finalCtx.state,
                     elapsedMs,
                     prNumber: finalCtx.prNumber,
                   });
                   await slackNotify(message);
                 },
               });
+
+              if (result.state === "manual_handoff") {
+                preserveWorktree = true;
+                runLogger.warn("Issue handed off — worktree preserved for manual resume", {
+                  issue: issue.number,
+                  timedOutState: result._timedOutState,
+                  reason: result.handoffReason,
+                  worktreePath,
+                  resumeCommand: `aidev run --issue ${issue.number} --repo ${repo} --cwd ${cwd} --resume --yes`,
+                });
+                // Mark as failed so re-labeling can trigger a retry
+                processedIssues.set(issue.number, "failed");
+              } else {
+                processedIssues.set(issue.number, "done");
+              }
+            } catch (err) {
+              processedIssues.set(issue.number, "failed");
+              throw err;
             } finally {
-              await git.removeWorktree(worktreePath, cwd).catch((err) =>
-                runLogger.error("Worktree cleanup failed", {
-                  path: worktreePath,
-                  error: String(err),
-                })
-              );
+              concurrentRuns--;
+              if (shuttingDown && concurrentRuns === 0) {
+                logger.info("All in-flight runs completed after shutdown signal, exiting");
+                process.exit(0);
+              }
+              if (!preserveWorktree) {
+                await git.removeWorktree(worktreePath, cwd).catch((err) =>
+                  runLogger.error("Worktree cleanup failed", {
+                    path: worktreePath,
+                    error: String(err),
+                  })
+                );
+              }
             }
           };
 
@@ -571,7 +682,24 @@ export function createCli() {
       };
 
       await poll();
-      setInterval(poll, opts.interval * 1000);
+      const intervalId = setInterval(async () => {
+        try {
+          await poll();
+        } catch (err) {
+          logger.error("Poll cycle failed", { ...formatErrorDetails(err) });
+        }
+      }, opts.interval * 1000);
+
+      // Graceful shutdown on SIGTERM/SIGINT
+      const shutdown = () => {
+        shuttingDown = true;
+        clearInterval(intervalId);
+        logger.info("Shutting down watch mode", { inFlightRuns: concurrentRuns });
+        if (concurrentRuns === 0) process.exit(0);
+        // In-flight runs will exit via the finally block when they complete
+      };
+      process.on("SIGTERM", shutdown);
+      process.on("SIGINT", shutdown);
     });
 
   program

@@ -65,6 +65,21 @@ import { createGitHubAdapter } from "../src/adapters/github.js";
 import { createStateHandlers } from "../src/workflow/states.js";
 import { runWorkflow } from "../src/workflow/engine.js";
 
+function makeMockGithub(overrides: Record<string, any> = {}) {
+  return {
+    listIssuesByLabel: vi.fn(async () => []),
+    getIssue: vi.fn(),
+    getAuthenticatedUser: vi.fn(async () => "testuser"),
+    commentOnIssue: vi.fn(),
+    createPr: vi.fn(),
+    getCiStatus: vi.fn(),
+    mergePr: vi.fn(),
+    closeIssue: vi.fn(),
+    getCheckRunLogs: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("watch command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -207,6 +222,94 @@ describe("watch command", () => {
     // The watcher should still be alive (no throw)
   });
 
+  it("preserves worktree when watch mode issue ends in manual_handoff", async () => {
+    const mockGithub = makeMockGithub({
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 55, title: "Timeout issue", body: "body", labels: ["ai:run"], author: "testuser" },
+      ]),
+    });
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "manual_handoff",
+      _timedOutState: "implementing",
+      handoffReason: "State implementing timed out after 1800000ms",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    // Wait for fire-and-forget to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+
+    // addWorktree called once (for creating the worktree)
+    expect(mockAddWorktree).toHaveBeenCalledTimes(1);
+
+    // removeWorktree should NOT be called — worktree preserved for manual_handoff
+    expect(mockRemoveWorktree).not.toHaveBeenCalled();
+  });
+
+  it("cleans up worktree when watch mode issue completes normally", async () => {
+    const mockGithub = makeMockGithub({
+      listIssuesByLabel: vi.fn(async () => [
+        { number: 56, title: "Normal issue", body: "body", labels: ["ai:run"], author: "testuser" },
+      ]),
+    });
+    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+
+    const mockRunWorkflow = vi.mocked(runWorkflow);
+    mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+      ...ctx,
+      state: "done",
+    }));
+
+    const originalSetInterval = global.setInterval;
+    vi.spyOn(global, "setInterval").mockImplementation(((
+      fn: Function,
+      ms: number
+    ) => {
+      return originalSetInterval(() => {}, ms);
+    }) as any);
+
+    const cli = createCli();
+    await cli.parseAsync([
+      "node",
+      "aidev",
+      "watch",
+      "--repo",
+      "owner/repo",
+      "--interval",
+      "999",
+    ]);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockRunWorkflow).toHaveBeenCalledTimes(1);
+
+    // Normal completion → worktree should be cleaned up
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(1);
+  });
+
   it("creates unique runIds for each issue", async () => {
     const mockGithub = {
       listIssuesByLabel: vi.fn(async () => [
@@ -253,8 +356,12 @@ describe("watch command", () => {
 
     expect(mockRunWorkflow).toHaveBeenCalledTimes(2);
 
-    const ctx1 = mockRunWorkflow.mock.calls[0][0];
-    const ctx2 = mockRunWorkflow.mock.calls[1][0];
+    // Sort by issue number since fire-and-forget ordering is non-deterministic
+    const calls = mockRunWorkflow.mock.calls
+      .map((c: any) => c[0])
+      .sort((a: any, b: any) => a.issueNumber - b.issueNumber);
+    const ctx1 = calls[0];
+    const ctx2 = calls[1];
 
     expect(ctx1.runId).not.toBe(ctx2.runId);
     expect(ctx1.issueNumber).toBe(10);
@@ -1009,7 +1116,7 @@ describe("run command", () => {
     }
   });
 
-  it("errors when resuming non-terminal state but worktree does not exist", async () => {
+  it("recreates worktree from init when resuming non-terminal state but worktree does not exist", async () => {
     const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -1045,6 +1152,12 @@ describe("run command", () => {
     mockExistsSync.mockReturnValue(false);
 
     try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
       const cli = createCli();
       await cli.parseAsync([
         "node",
@@ -1060,8 +1173,10 @@ describe("run command", () => {
         "--yes",
       ]);
 
-      // Should exit with error
-      expect(process.exit).toHaveBeenCalledWith(1);
+      // Worktree missing → recreated from scratch, state reset to init
+      expect(mockAddWorktree).toHaveBeenCalled();
+      const ctx = mockRunWorkflow.mock.calls[0][0];
+      expect(ctx.state).toBe("init");
     } finally {
       mockExistsSync.mockReturnValue(false);
       process.env.HOME = originalHome;
@@ -1208,9 +1323,158 @@ describe("run command", () => {
     }
   });
 
-  it("uses --base for worktree creation", async () => {
-    const mockGithub = {
-      listIssuesByLabel: vi.fn(async () => []),
+  it("reuses worktree when resuming from manual_handoff with _timedOutState", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".aidev", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "manual_handoff",
+        _timedOutState: "implementing",
+        handoffReason: "State implementing timed out after 1800000ms",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: false,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    // Worktree exists on disk (preserved from manual_handoff)
+    mockExistsSync.mockReturnValue(true);
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // manual_handoff → _timedOutState "implementing" → non-terminal → reuse worktree
+      expect(mockAddWorktree).not.toHaveBeenCalled();
+
+      // ctx.state should be restored to the timed-out state
+      const ctx = mockRunWorkflow.mock.calls[0][0];
+      expect(ctx.state).toBe("implementing");
+    } finally {
+      mockExistsSync.mockReturnValue(false);
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to init when resuming from manual_handoff without _timedOutState", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-"));
+    const runDir = join(tempHome, ".aidev", "runs", "run-resume-test");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "state.json"),
+      JSON.stringify({
+        runId: "run-resume-test",
+        targetKind: "issue",
+        issueNumber: 42,
+        repo: "owner/repo",
+        cwd: "/tmp/stale-worktree/.worktrees/issue-42",
+        state: "manual_handoff",
+        handoffReason: "Manual handoff without timed out state",
+        branch: "aidev/issue-42",
+        base: "main",
+        maxFixAttempts: 3,
+        fixAttempts: 0,
+        dryRun: false,
+        autoMerge: false,
+        issueLabels: [],
+        skipAuthorCheck: false,
+        skipStates: [],
+      })
+    );
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    // Worktree exists on disk (preserved from manual_handoff)
+    mockExistsSync.mockReturnValue(true);
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "done",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--cwd",
+        "/tmp/real-repo",
+        "--resume",
+        "--yes",
+      ]);
+
+      // No _timedOutState → falls back to "init" (non-terminal) → reuse worktree
+      expect(mockAddWorktree).not.toHaveBeenCalled();
+
+      const ctx = mockRunWorkflow.mock.calls[0][0];
+      expect(ctx.state).toBe("init");
+    } finally {
+      mockExistsSync.mockReturnValue(false);
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves worktree when workflow result is manual_handoff", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempHome = await mkdtemp(join(tmpdir(), "aidev-resume-wt-"));
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempHome;
+
+    vi.mocked(createGitHubAdapter).mockReturnValue(makeMockGithub({
       getIssue: vi.fn(async () => ({
         number: 42,
         title: "Test issue",
@@ -1218,15 +1482,50 @@ describe("run command", () => {
         labels: [],
         author: "testuser",
       })),
-      getAuthenticatedUser: vi.fn(async () => "testuser"),
-      commentOnIssue: vi.fn(),
-      createPr: vi.fn(),
-      getCiStatus: vi.fn(),
-      mergePr: vi.fn(),
-      closeIssue: vi.fn(),
-      getCheckRunLogs: vi.fn(),
-    };
-    vi.mocked(createGitHubAdapter).mockReturnValue(mockGithub);
+    }));
+
+    try {
+      const mockRunWorkflow = vi.mocked(runWorkflow);
+      mockRunWorkflow.mockImplementation(async (ctx: any) => ({
+        ...ctx,
+        state: "manual_handoff",
+        _timedOutState: "implementing",
+        handoffReason: "State implementing timed out after 1800000ms",
+      }));
+
+      const cli = createCli();
+      await cli.parseAsync([
+        "node",
+        "aidev",
+        "run",
+        "--issue",
+        "42",
+        "--repo",
+        "owner/repo",
+        "--yes",
+      ]);
+
+      // Worktree created for new run
+      expect(mockAddWorktree).toHaveBeenCalled();
+
+      // manual_handoff → keepWorktree = true → removeWorktree NOT called in finally
+      expect(mockRemoveWorktree).toHaveBeenCalledTimes(1); // only stale cleanup before addWorktree
+    } finally {
+      process.env.HOME = originalHome;
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("uses --base for worktree creation", async () => {
+    vi.mocked(createGitHubAdapter).mockReturnValue(makeMockGithub({
+      getIssue: vi.fn(async () => ({
+        number: 42,
+        title: "Test issue",
+        body: "body",
+        labels: [],
+        author: "testuser",
+      })),
+    }));
 
     const mockRunWorkflow = vi.mocked(runWorkflow);
     mockRunWorkflow.mockImplementation(async (ctx: any) => ({

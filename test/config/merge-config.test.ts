@@ -79,4 +79,39 @@ describe("mergeConfigs", () => {
     expect(result).not.toHaveProperty("backend");
     expect(result).not.toHaveProperty("model");
   });
+
+  it("deep-merges stateTimeouts from repo and issue", () => {
+    const repo: Partial<IssueConfig> = {
+      stateTimeouts: { implementing: 1800000, reviewing: 600000 },
+    };
+    const issue: Partial<IssueConfig> = {
+      stateTimeouts: { implementing: 3600000 },
+    };
+
+    const result = mergeConfigs(repo, issue, new Set());
+
+    expect(result.stateTimeouts).toEqual({
+      implementing: 3600000,
+      reviewing: 600000,
+    });
+  });
+
+  it("uses repo stateTimeouts when issue has none", () => {
+    const repo: Partial<IssueConfig> = {
+      stateTimeouts: { implementing: 1800000 },
+    };
+
+    const result = mergeConfigs(repo, {}, new Set());
+
+    expect(result.stateTimeouts).toEqual({ implementing: 1800000 });
+  });
+
+  it("excludes stateTimeouts when cli-explicit", () => {
+    const repo: Partial<IssueConfig> = {
+      stateTimeouts: { implementing: 1800000 },
+    };
+    const result = mergeConfigs(repo, {}, new Set(["stateTimeouts"]));
+
+    expect(result).not.toHaveProperty("stateTimeouts");
+  });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { SkippableStateSchema, LanguageSchema } from "../types.js";
-import type { SkippableState, Language } from "../types.js";
+import { SkippableStateSchema, LanguageSchema, RunStateSchema } from "../types.js";
+import type { SkippableState, Language, RunState } from "../types.js";
+import { MIN_STATE_TIMEOUT_MS, MAX_STATE_TIMEOUT_MS } from "../workflow/engine.js";
 
 export type { SkippableState, Language } from "../types.js";
 export { LanguageSchema } from "../types.js";
@@ -16,6 +17,7 @@ const IssueConfigSchema = z
     backend: z.string().optional(),
     model: z.string().optional(),
     language: LanguageSchema.optional(),
+    stateTimeouts: z.record(RunStateSchema, z.number()).optional(),
   })
   .strict();
 
@@ -31,6 +33,7 @@ export interface ResolvedConfig {
   backend?: string;
   model?: string;
   language: Language;
+  stateTimeouts?: Partial<Record<RunState, number>>;
 }
 
 /**
@@ -49,50 +52,65 @@ function extractAidevBlock(body: string): string | null {
  *     - item
  *   # comment lines (skipped)
  */
-function parseYamlLike(block: string): Record<string, string | string[]> {
-  const result: Record<string, string | string[]> = {};
+function parseYamlLike(block: string): Record<string, string | string[] | Record<string, string>> {
+  const result: Record<string, string | string[] | Record<string, string>> = {};
   const lines = block.split("\n");
   let currentKey: string | null = null;
   let currentList: string[] | null = null;
+  let currentMap: Record<string, string> | null = null;
+
+  function flushCurrent() {
+    if (currentKey) {
+      // List items (- item) and map items (key: value) under the same key are
+      // mutually exclusive. If both are present (malformed input), list wins
+      // and map entries are silently discarded. This is intentional — our
+      // config format doesn't support mixed nested structures.
+      if (currentList && currentList.length > 0) result[currentKey] = currentList;
+      else if (currentMap && Object.keys(currentMap).length > 0) result[currentKey] = currentMap;
+    }
+    currentKey = null;
+    currentList = null;
+    currentMap = null;
+  }
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) continue;
     if (line.startsWith("#")) continue;
 
-    const listItem = line.match(/^-\s+(.+)$/);
-    if (listItem && currentKey) {
-      if (!currentList) currentList = [];
-      currentList.push(listItem[1]!.trim());
-      continue;
+    const isIndented = /^\s+/.test(rawLine);
+
+    if (isIndented && currentKey) {
+      const listItem = line.match(/^-\s+(.+)$/);
+      if (listItem) {
+        if (!currentList) currentList = [];
+        currentList.push(listItem[1]!.trim());
+        continue;
+      }
+
+      const nestedKv = line.match(/^(\w+)\s*:\s*(.+)$/);
+      if (nestedKv) {
+        if (!currentMap) currentMap = {};
+        currentMap[nestedKv[1]!] = nestedKv[2]!.trim();
+        continue;
+      }
     }
 
-    // Flush previous list
-    if (currentKey && currentList) {
-      result[currentKey] = currentList;
-      currentKey = null;
-      currentList = null;
-    }
+    flushCurrent();
 
     const kv = line.match(/^(\w+)\s*:\s*(.*)$/);
     if (kv) {
       const key = kv[1]!;
       const value = kv[2]!.trim();
       if (value === "") {
-        // Start of a list
         currentKey = key;
-        currentList = [];
       } else {
         result[key] = value;
       }
     }
   }
 
-  // Flush final list
-  if (currentKey && currentList) {
-    result[currentKey] = currentList;
-  }
-
+  flushCurrent();
   return result;
 }
 
@@ -136,7 +154,10 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
   }
 
   if (typeof raw.base === "string" && raw.base.length > 0) {
-    obj.base = raw.base;
+    // Only allow branch-name-safe characters; reject path traversal
+    if (/^[a-zA-Z0-9._\-/]+$/.test(raw.base) && !raw.base.includes("..")) {
+      obj.base = raw.base;
+    }
   }
 
   if (typeof raw.backend === "string" && raw.backend.length > 0) {
@@ -156,6 +177,19 @@ export function parseConfigBlock(block: string): Partial<IssueConfig> {
       (s) => SkippableStateSchema.safeParse(s).success
     );
     if (valid.length > 0) obj.skip = valid;
+  }
+
+  if (raw.stateTimeouts && typeof raw.stateTimeouts === "object" && !Array.isArray(raw.stateTimeouts)) {
+    const map = raw.stateTimeouts as Record<string, string>;
+    const timeouts: Partial<Record<RunState, number>> = {};
+    for (const [key, val] of Object.entries(map)) {
+      if (!RunStateSchema.safeParse(key).success) continue;
+      const n = Number(val);
+      if (Number.isFinite(n) && n >= MIN_STATE_TIMEOUT_MS && n <= MAX_STATE_TIMEOUT_MS) {
+        timeouts[key as RunState] = n;
+      }
+    }
+    if (Object.keys(timeouts).length > 0) obj.stateTimeouts = timeouts;
   }
 
   return obj;
